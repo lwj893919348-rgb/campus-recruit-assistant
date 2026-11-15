@@ -39,8 +39,8 @@ jobs:
       - name: Compute Pages base path
         id: base
         run: |
-          REPO="${{ github.event.repository.name }}"
-          OWNER="${{ github.repository_owner }}"
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO="${GITHUB_REPOSITORY#*/}"
           if [ "$REPO" = "${OWNER}.github.io" ]; then
             echo "path=/" >> "$GITHUB_OUTPUT"
           else
