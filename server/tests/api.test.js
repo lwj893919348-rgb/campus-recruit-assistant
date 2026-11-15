@@ -21,7 +21,13 @@ import {
   parseRssOrAtomFeed,
   parseJsonLdJobPostings,
   parseBatchImportText,
+  syncSingleSource,
 } from '../services/syncEngine.js';
+import { fetchAtsSourceJobs } from '../services/atsAdapters.js';
+import {
+  detectAtsPlatform,
+  getCompanyAtsSupport,
+} from '../../shared/atsPlatforms.js';
 import {
   ALL_JOB_CATEGORIES,
   parseWechatAnnouncementText,
@@ -747,6 +753,393 @@ test('All-stage filters, WeChat announcement preview/import, and mp.weixin.qq.co
     });
     assert.equal(blockRes.status, 400);
     assert.match(blockRes.data.error, /微信|粘贴|正文/);
+  } finally {
+    db.close();
+  }
+});
+
+function readDetectedPlatform(res) {
+  return typeof res === 'string' ? res : res?.platform;
+}
+
+test('ATS platform detection classifies Zhiye, HotJob, Greenhouse, Lever, Ashby, Moka and Feishu accurately', () => {
+  assert.equal(readDetectedPlatform(detectAtsPlatform('https://iflytek.zhiye.com/campus')), 'beisen_zhiye');
+  assert.equal(readDetectedPlatform(detectAtsPlatform('https://whchem.hotjob.cn')), 'hotjob_wecruit');
+  assert.equal(readDetectedPlatform(detectAtsPlatform('https://boards.greenhouse.io/openai')), 'greenhouse');
+  assert.equal(readDetectedPlatform(detectAtsPlatform('https://jobs.lever.co/scaleai')), 'lever');
+  assert.equal(readDetectedPlatform(detectAtsPlatform('https://jobs.ashbyhq.com/linear')), 'ashby');
+  assert.equal(readDetectedPlatform(detectAtsPlatform('https://app.mokahr.com/campus-recruitment/biren')), 'moka_open');
+  assert.equal(readDetectedPlatform(detectAtsPlatform('https://modelbest.jobs.feishu.cn/campus')), 'feishu_hire');
+
+  const autoCompanies = OFFICIAL_COMPANIES.filter((c) => getCompanyAtsSupport(c)?.autoSyncable);
+  assert.ok(autoCompanies.length >= 28, `Expected >= 28 autoSyncable built-in companies, got ${autoCompanies.length}`);
+});
+
+test('Beisen Zhiye adapter paginates, infers categories/recruitType, normalizes sentinel dates, and dedupes', async () => {
+  const db = createDatabase(':memory:', { seed: true });
+  try {
+    const zhiyeCompany = db
+      .prepare("SELECT * FROM companies WHERE official_campus_url LIKE '%zhiye.com%' LIMIT 1")
+      .get();
+    assert.ok(zhiyeCompany, 'Should have built-in zhiye.com company');
+
+    const mockFetch = async (url, opts = {}) => {
+      const target = String(url);
+      if (target.startsWith('https://iflytek.zhiye.com') && (!opts.method || opts.method === 'GET')) {
+        return new Response('<script>window.__CONF__={PortalId:"11111111-2222-3333-4444-555555555555"};</script>', {
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        });
+      }
+      if (target === 'https://iflytek.zhiye.com/api/Jobad/GetJobAdPageList') {
+        const body = JSON.parse(opts.body || '{}');
+        assert.equal(body.PortalId, '11111111-2222-3333-4444-555555555555');
+        if (body.PageIndex === 1) {
+          return Response.json({
+            Code: 200,
+            Count: 3,
+            Data: [
+              {
+                Id: 'row-1',
+                JobAdId: 'ad-101',
+                JobAdName: '高级税务审计经理',
+                CategoryId: '1',
+                LocNames: '上海',
+                Salary: '25k-40k',
+                Duty: '<p>负责集团税务筹划与并购审计（3-5年）</p>',
+                Require: '<p>CPA优先</p>',
+                PostDate: '2026-11-10T09:00:00',
+                EndTime: '0001-01-01T00:00:00',
+              },
+              {
+                Id: 'row-2',
+                JobAdId: 'ad-102',
+                JobAdName: '多模态大模型算法工程师',
+                CategoryId: '2',
+                LocNames: '合肥/北京',
+                Salary: '面议',
+                Duty: '研发新一代多模态认知大模型',
+                Require: '2027届应届硕士/博士',
+                PostDate: '2026-11-12T10:00:00',
+                EndTime: '2026-12-31T23:59:59',
+              },
+            ],
+          });
+        }
+        return Response.json({
+          Code: 200,
+          Count: 3,
+          Data: [
+            {
+              Id: 'row-3',
+              JobAdId: 'ad-103',
+              JobAdName: '2027暑期实习生-嵌入式硬件工程师',
+              CategoryId: '2',
+              LocNames: '深圳',
+              Duty: '负责端侧智能硬件原理图设计与驱动开发',
+              Require: '在校实习生',
+              PostDate: '2026-11-14T08:00:00',
+              EndTime: '0001-01-01T00:00:00',
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected fetch URL: ${target}`);
+    };
+
+    const pagedPreview = await fetchAtsSourceJobs(
+      { id: 'src-test-beisen', name: '科大讯飞测试源', source_type: 'ats_auto', url: 'https://iflytek.zhiye.com/home' },
+      { fetchImpl: mockFetch, pageSize: 2, maxPages: 3 },
+    );
+    assert.equal(pagedPreview.status, 'synced');
+    assert.equal(pagedPreview.items.length, 3);
+    assert.equal(pagedPreview.items[0].officialUrl, 'https://iflytek.zhiye.com/JobAd/Info?adid=ad-101');
+    assert.equal(pagedPreview.items[0].deadline, '长期有效/招满即止');
+    assert.equal(pagedPreview.items[0].recruitType, '社会招聘');
+    assert.equal(pagedPreview.items[0].category, '财务审计');
+    assert.equal(pagedPreview.items[1].category, '算法AI');
+    assert.equal(pagedPreview.items[1].recruitType, '校园招聘');
+    assert.equal(pagedPreview.items[1].deadline, '2026-12-31');
+    assert.equal(pagedPreview.items[2].recruitType, '实习兼职');
+    assert.equal(pagedPreview.items[2].category, '硬件工程');
+
+    // Full syncSingleSource -> DB write & dedupe check (single page of 2 items from mock with pageSize=50)
+    db.prepare(
+      `INSERT INTO sync_sources (id, name, source_type, url, default_company_id, enabled, auto_interval_hours, created_at)
+       VALUES (?, ?, 'ats_auto', ?, ?, 1, 6, ?)`,
+    ).run('src-beisen-db', '讯飞北森源', 'https://iflytek.zhiye.com/home', zhiyeCompany.id, new Date().toISOString());
+
+    const srcRow = db.prepare('SELECT * FROM sync_sources WHERE id = ?').get('src-beisen-db');
+    const run1 = await syncSingleSource(db, srcRow, { fetchImpl: mockFetch });
+    assert.equal(run1.status, 'synced');
+    assert.equal(run1.added, 2);
+
+    const insertedJob = db.prepare("SELECT * FROM jobs WHERE external_id LIKE '%ad-101'").get();
+    assert.ok(insertedJob);
+    assert.equal(insertedJob.company_id, zhiyeCompany.id);
+    assert.equal(insertedJob.category, '财务审计');
+    assert.equal(insertedJob.recruit_type, '社会招聘');
+    assert.equal(insertedJob.official_source_url, 'https://iflytek.zhiye.com/JobAd/Info?adid=ad-101');
+
+    const run2 = await syncSingleSource(db, srcRow, { fetchImpl: mockFetch });
+    assert.equal(run2.status, 'synced');
+    assert.equal(run2.added, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('HotJob Wecruit adapter resolves getSLD, fetches form-urlencoded listPosition, and blocks loopback SSRF targets', async () => {
+  const db = createDatabase(':memory:', { seed: true });
+  try {
+    const hotjobCompany = db
+      .prepare("SELECT * FROM companies WHERE official_campus_url LIKE '%hotjob.cn%' LIMIT 1")
+      .get();
+    assert.ok(hotjobCompany, 'Should have built-in hotjob.cn company');
+
+    const mockFetch = async (url, opts = {}) => {
+      const target = String(url);
+      if (target === 'https://whchem.hotjob.cn/wecruit/common/getSLD') {
+        return Response.json({
+          state: '200',
+          data: {
+            linkData: {
+              link: 'https://wecruit.hotjob.cn/SU63abcdef0123456789abcdef/pb/index.html#/',
+            },
+          },
+        });
+      }
+      if (target === 'https://wecruit.hotjob.cn/wecruit/positionInfo/listPosition/SU63abcdef0123456789abcdef') {
+        const params = new URLSearchParams(String(opts.body || ''));
+        const ch = params.get('recruitType');
+        if (ch === '1') {
+          return Response.json({
+            data: {
+              pageForm: {
+                totalPage: 1,
+                pageData: [
+                  {
+                    postId: 'hj-campus-1',
+                    postName: '新能源电池正极材料研发工程师（2027届）',
+                    workPlaceStr: '烟台/宁波',
+                    recruitType: 1,
+                    publishDate: '2026-11-11',
+                    endDate: '2026-12-20',
+                    longTermRelease: 0,
+                    workContent: '承担新型锂电正极材料开发',
+                  },
+                ],
+              },
+            },
+          });
+        }
+        if (ch === '2') {
+          return Response.json({
+            data: {
+              pageForm: {
+                totalPage: 1,
+                pageData: [
+                  {
+                    postId: 'hj-social-1',
+                    postName: '供应链计划高级主管',
+                    workPlaceStr: '上海',
+                    recruitType: 2,
+                    publishDate: '2026-11-10',
+                    endDate: '3000-01-01',
+                    longTermRelease: 1,
+                    workContent: '统筹全球化工供应链产销排程（3-5年）',
+                  },
+                ],
+              },
+            },
+          });
+        }
+        return Response.json({ data: { pageForm: { totalPage: 1, pageData: [] } } });
+      }
+      throw new Error(`Unexpected HotJob URL: ${target}`);
+    };
+
+    db.prepare(
+      `INSERT INTO sync_sources (id, name, source_type, url, default_company_id, enabled, auto_interval_hours, created_at)
+       VALUES (?, ?, 'hotjob_wecruit', ?, ?, 1, 6, ?)`,
+    ).run('src-hotjob-db', '万华HotJob源', 'https://whchem.hotjob.cn', hotjobCompany.id, new Date().toISOString());
+
+    const src = db.prepare('SELECT * FROM sync_sources WHERE id = ?').get('src-hotjob-db');
+    const syncRes = await syncSingleSource(db, src, { fetchImpl: mockFetch });
+    assert.equal(syncRes.status, 'synced');
+    assert.equal(syncRes.added, 2);
+
+    const socialJob = db.prepare("SELECT * FROM jobs WHERE external_id LIKE '%hj-social-1'").get();
+    assert.ok(socialJob);
+    assert.equal(socialJob.recruit_type, '社会招聘');
+    assert.equal(socialJob.category, '供应链制造');
+    assert.equal(socialJob.deadline, '长期有效/招满即止');
+    assert.equal(
+      socialJob.official_source_url,
+      'https://wecruit.hotjob.cn/SU63abcdef0123456789abcdef/pb/index.html#/',
+    );
+
+    // Secondary SSRF test when getSLD redirects to loopback IP
+    const ssrfRes = await fetchAtsSourceJobs(
+      { id: 'src-hotjob-ssrf', name: 'SSRF检测', source_type: 'hotjob_wecruit', url: 'https://evil.hotjob.cn' },
+      {
+        allowPrivateHosts: false,
+        fetchImpl: async () =>
+          Response.json({
+            state: '200',
+            data: { linkData: { link: 'http://127.0.0.1:8080/internal-admin' } },
+          }),
+      },
+    );
+    assert.equal(ssrfRes.status, 'blocked');
+    assert.match(ssrfRes.message, /内网|拦截/);
+  } finally {
+    db.close();
+  }
+});
+
+test('Greenhouse, Lever, Ashby public adapters and Moka/Feishu compliance restricted_portal guards work cleanly', async () => {
+  const db = createDatabase(':memory:', { seed: true });
+  try {
+    // Greenhouse / Lever / Ashby
+    const gh = await fetchAtsSourceJobs(
+      { id: 'gh-1', name: 'GH', source_type: 'ats_auto', url: 'https://boards.greenhouse.io/demoai' },
+      {
+        fetchImpl: async (u) => {
+          assert.equal(u, 'https://boards-api.greenhouse.io/v1/boards/demoai/jobs?content=true');
+          return Response.json({
+            jobs: [
+              {
+                id: 9001,
+                title: 'Research Scientist - Multimodal AI',
+                location: { name: '上海' },
+                absolute_url: 'https://boards.greenhouse.io/demoai/jobs/9001',
+                updated_at: '2026-11-12T00:00:00Z',
+                content: '<p>Full time AI role 3-5年</p>',
+              },
+            ],
+          });
+        },
+      },
+    );
+    assert.equal(gh.status, 'synced');
+    assert.equal(gh.items.length, 1);
+    assert.equal(gh.items[0].category, '算法AI');
+
+    const lever = await fetchAtsSourceJobs(
+      { id: 'lv-1', name: 'LV', source_type: 'lever', url: 'https://jobs.lever.co/demolever' },
+      {
+        fetchImpl: async (u) => {
+          assert.equal(u, 'https://api.lever.co/v0/postings/demolever?mode=json');
+          return Response.json([
+            {
+              id: 'lv-88',
+              text: 'Senior Backend Engineer (Go)',
+              categories: { location: '北京', team: 'Platform' },
+              hostedUrl: 'https://jobs.lever.co/demolever/lv-88',
+              descriptionPlain: 'Build distributed cloud systems',
+              createdAt: 1762905600000,
+            },
+          ]);
+        },
+      },
+    );
+    assert.equal(lever.status, 'synced');
+    assert.equal(lever.items[0].category, '技术研发');
+
+    const ashby = await fetchAtsSourceJobs(
+      { id: 'as-1', name: 'AS', source_type: 'ashby', url: 'https://jobs.ashbyhq.com/demoashby' },
+      {
+        fetchImpl: async (u) => {
+          assert.equal(u, 'https://api.ashbyhq.com/posting-api/job-board/demoashby');
+          return Response.json({
+            jobs: [
+              {
+                id: 'as-77',
+                title: 'Product Designer',
+                location: 'Remote',
+                jobUrl: 'https://jobs.ashbyhq.com/demoashby/as-77',
+                publishedAt: '2026-11-10',
+                descriptionPlain: 'Design product experience',
+              },
+            ],
+          });
+        },
+      },
+    );
+    assert.equal(ashby.status, 'synced');
+    assert.equal(ashby.items[0].category, '产品设计');
+
+    // Moka encrypted ciphertext guard -> restricted_portal
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO sync_sources (id, name, source_type, url, enabled, auto_interval_hours, created_at)
+       VALUES ('src-moka-enc', 'Moka加密测试', 'moka_open', 'https://app.mokahr.com/api/outer/ats-jc-apply/website/jobs?org=biren', 1, 6, ?)`,
+    ).run(now);
+    const mokaSrc = db.prepare('SELECT * FROM sync_sources WHERE id = ?').get('src-moka-enc');
+    const mokaRes = await syncSingleSource(db, mokaSrc, {
+      fetchImpl: async () => Response.json({ data: 'U2FsdGVkX1/ciphertextPayloadShouldNeverBeDecrypted==' }),
+    });
+    assert.equal(mokaRes.status, 'restricted_portal');
+    assert.equal(mokaRes.added, 0);
+    assert.equal(db.prepare('SELECT last_status FROM sync_sources WHERE id = ?').get('src-moka-enc').last_status, 'restricted_portal');
+
+    // Feishu HTTP 405 signature gate guard -> restricted_portal
+    db.prepare(
+      `INSERT INTO sync_sources (id, name, source_type, url, enabled, auto_interval_hours, created_at)
+       VALUES ('src-feishu-405', '飞书门禁测试', 'feishu_hire', 'https://modelbest.jobs.feishu.cn/campus', 1, 6, ?)`,
+    ).run(now);
+    const feishuSrc = db.prepare('SELECT * FROM sync_sources WHERE id = ?').get('src-feishu-405');
+    const feishuRes = await syncSingleSource(db, feishuSrc, {
+      fetchImpl: async () => new Response('Method Not Allowed', { status: 405 }),
+    });
+    assert.equal(feishuRes.status, 'restricted_portal');
+    assert.equal(feishuRes.added, 0);
+    assert.equal(db.prepare('SELECT last_status FROM sync_sources WHERE id = ?').get('src-feishu-405').last_status, 'restricted_portal');
+  } finally {
+    db.close();
+  }
+});
+
+test('POST /api/sync/sources/subscribe-company subscribes autoSyncable firms idempotently and rejects restricted ATS portals', async () => {
+  const db = createDatabase(':memory:', { seed: true });
+  const app = createApp(db);
+  try {
+    const zhiyeComp = db
+      .prepare("SELECT * FROM companies WHERE official_campus_url LIKE '%zhiye.com%' LIMIT 1")
+      .get();
+    const mokaComp = db
+      .prepare("SELECT * FROM companies WHERE official_campus_url LIKE '%mokahr.com%' LIMIT 1")
+      .get();
+    assert.ok(zhiyeComp && mokaComp);
+
+    const sub1 = await invokeApp(app, 'POST', '/api/sync/sources/subscribe-company', {
+      companyId: zhiyeComp.id,
+    });
+    assert.equal(sub1.status, 201);
+    assert.equal(sub1.data.created, true);
+    assert.equal(sub1.data.source.source_type, 'ats_auto');
+    assert.equal(sub1.data.atsInfo.autoSyncable, true);
+
+    const sub2 = await invokeApp(app, 'POST', '/api/sync/sources/subscribe-company', {
+      companyId: zhiyeComp.id,
+    });
+    assert.equal(sub2.status, 200);
+    assert.equal(sub2.data.created, false);
+    assert.equal(sub2.data.source.id, sub1.data.source.id);
+
+    const rejectedMoka = await invokeApp(app, 'POST', '/api/sync/sources/subscribe-company', {
+      companyId: mokaComp.id,
+    });
+    assert.equal(rejectedMoka.status, 400);
+    assert.match(rejectedMoka.data.error, /Moka|加密|不支持/);
+
+    const directCreateAts = await invokeApp(app, 'POST', '/api/sync/sources', {
+      name: '直接配置Greenhouse测试源',
+      sourceType: 'ats_auto',
+      url: 'https://boards.greenhouse.io/example-org',
+    });
+    assert.equal(directCreateAts.status, 201);
   } finally {
     db.close();
   }

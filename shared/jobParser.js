@@ -120,28 +120,44 @@ export function inferCategory(title = '', fallbackText = '') {
   if (/测试|QA|SDET|运维|SRE|DevOps|渗透|网安|安全工程|性能测试|自动化测试|技术支持/i.test(primary)) {
     return '测试运维';
   }
-  if (/数据科学|数据分析|商业分析|BI|数仓|ETL|SQL分析|策略分析|经营分析/i.test(primary)) return '数据商业分析';
-  if (/人力|HR|HRBP|招聘|薪酬|绩效|员工关系|组织发展|行政管理|行政专员|董办/i.test(primary)) {
+  if (
+    /数据科学|数据分析|商业分析|BI|数仓|ETL|SQL分析|策略分析|经营分析|Data\s*(?:Scientist|Analyst|Engineer)|Business\s+Analyst/i.test(
+      primary,
+    )
+  ) {
+    return '数据商业分析';
+  }
+  if (/人力|HR|HRBP|招聘|薪酬|绩效|员工关系|组织发展|行政管理|行政专员|董办|Recruiter|Talent\s+Acquisition/i.test(primary)) {
     return '人力行政';
   }
-  if (/销售|客户经理|商务拓展|BD|大客户|政企|渠道|售前|解决方案专家|Ka|外贸|跨境销售|门店扩展/i.test(primary)) {
+  if (/销售|客户经理|商务拓展|BD|大客户|政企|渠道|售前|解决方案专家|Ka|外贸|跨境销售|门店扩展|Account\s+Executive|Sales/i.test(primary)) {
     return '销售商务';
   }
-  if (/产品|策划|交互|UI|UX|用研|设计师|视觉设计/i.test(primary)) return '产品设计';
-  if (/运营|市场|营销|推广|品牌|公关|增长|新媒体|内容|投放|媒介|活动|电商/i.test(primary)) {
+  if (
+    /产品|策划|交互|UI|UX|用研|设计师|视觉设计|\bProduct\s+(?:Manager|Designer|Lead|Owner)\b|\b(?:UI|UX|Visual|Brand|Graphic)?\s*Designer\b/i.test(
+      primary,
+    )
+  ) {
+    return '产品设计';
+  }
+  if (/运营|市场|营销|推广|品牌|公关|增长|新媒体|内容|投放|媒介|活动|电商|Marketing|Growth\s+Lead/i.test(primary)) {
     return '运营市场';
   }
   if (/金融|投行|基金|风控|证券|信贷|精算|财富|行研|行长助理|交易员|柜员|承销|固收/i.test(primary)) {
     return '金融风控';
   }
-  if (/硬件|嵌入式|FPGA|IC|芯片|射频|天线|机械|结构|电路|BMS|电控|电机|电源|声学|光学|驱动开发|版图/i.test(primary)) {
+  if (/硬件|嵌入式|FPGA|IC|芯片|射频|天线|机械|结构|电路|BMS|电控|电机|电源|声学|光学|驱动开发|版图|Hardware|Embedded/i.test(primary)) {
     return '硬件工程';
   }
   if (/供应链|采购|物流|制造|IE|工艺|品控|质量|生产|计划|仓储|关务|PMC|调度/i.test(primary)) {
     return '供应链制造';
   }
   if (/管培|职能|战略|综合管理|储备|门店管理|店长|营运/i.test(primary)) return '职能管培';
-  if (/开发|研发|后端|前端|全栈|Java|Go|C\+\+|Python|Rust|客户端|iOS|Android|架构师|鸿蒙|系统工程|云计算/i.test(t)) {
+  if (
+    /开发|研发|后端|前端|全栈|Java|Go|C\+\+|Python|Rust|客户端|iOS|Android|架构师|鸿蒙|系统工程|云计算|Software|Engineer|Developer/i.test(
+      t,
+    )
+  ) {
     return '技术研发';
   }
   return '技术研发';

@@ -4,6 +4,11 @@ import {
   inferRecruitTypeAndExp,
   parseBatchImportText,
 } from '../../../shared/jobParser.js';
+import {
+  ALL_SYNC_SOURCE_TYPES,
+  detectAtsPlatform,
+  getCompanyAtsSupport,
+} from '../../../shared/atsPlatforms.js';
 
 const STORAGE_KEY = 'zhihang_campus_static_v1';
 
@@ -1345,10 +1350,67 @@ export const localEngine = {
     };
   },
 
+  async subscribeCompanySource(data = {}) {
+    const { companyId, channel = 'auto' } = data || {};
+    if (!companyId) throw new Error('缺少 companyId 参数。');
+
+    const { state, companies } = await getHydratedContext();
+    const company = companies.find((c) => c.id === companyId);
+    if (!company) throw new Error('未找到指定企业。');
+
+    const atsInfo = getCompanyAtsSupport(company);
+    if (!atsInfo?.autoSyncable) {
+      throw new Error(
+        atsInfo?.reason ||
+          '该企业官网暂不支持免密明文 ATS 自动同步（若为 Moka / 飞书门户请使用官网直达或粘贴招聘公告提取）。',
+      );
+    }
+
+    let targetUrl = atsInfo.url || company.official_campus_url || company.official_social_url || '';
+    if (channel === 'social' && company.official_social_url) {
+      const socialDetected = detectAtsPlatform(company.official_social_url, 'ats_auto');
+      const socialPlatform = typeof socialDetected === 'string' ? socialDetected : socialDetected?.platform;
+      if (['beisen_zhiye', 'hotjob_wecruit', 'greenhouse', 'lever', 'ashby'].includes(socialPlatform)) {
+        targetUrl = company.official_social_url;
+      }
+    } else if (channel === 'campus' && company.official_campus_url) {
+      const campusDetected = detectAtsPlatform(company.official_campus_url, 'ats_auto');
+      const campusPlatform = typeof campusDetected === 'string' ? campusDetected : campusDetected?.platform;
+      if (['beisen_zhiye', 'hotjob_wecruit', 'greenhouse', 'lever', 'ashby'].includes(campusPlatform)) {
+        targetUrl = company.official_campus_url;
+      }
+    }
+
+    const existing = (state.syncSources || []).find((s) => s.url === targetUrl);
+    if (existing) {
+      return {
+        source: existing,
+        created: false,
+        atsInfo,
+        staticModeNote: '纯静态模式下已保存订阅配置；实时跨站拉取企业 ATS 岗位需在本地启动后端 npm run start。',
+      };
+    }
+
+    const label = atsInfo.label || '官方 ATS';
+    const createdRes = await localEngine.createSyncSource({
+      name: `${company.short_name || company.name} · ${label}`,
+      sourceType: 'ats_auto',
+      url: targetUrl,
+      defaultCompanyId: company.id,
+      autoIntervalHours: 6,
+    });
+    return {
+      source: createdRes?.source || createdRes,
+      created: true,
+      atsInfo,
+      staticModeNote: '纯静态模式下已保存订阅配置；实时跨站拉取企业 ATS 岗位需在本地启动后端 npm run start。',
+    };
+  },
+
   async createSyncSource(data = {}) {
-    const { name = '', sourceType = 'rss_atom', url = '', defaultCompanyId = null, autoIntervalHours = 6 } = data;
+    const { name = '', sourceType = 'ats_auto', url = '', defaultCompanyId = null, autoIntervalHours = 6 } = data;
     if (!name.trim()) throw new Error('订阅源名称不能为空。');
-    if (!['rss_atom', 'json_feed', 'html_jsonld'].includes(sourceType)) throw new Error('不支持的订阅源格式。');
+    if (!ALL_SYNC_SOURCE_TYPES.includes(sourceType)) throw new Error('不支持的订阅源格式。');
     let parsedUrl;
     try {
       parsedUrl = new URL(url.trim());

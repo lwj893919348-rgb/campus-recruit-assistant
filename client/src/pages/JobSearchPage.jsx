@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { getCompanyAtsSupport } from '../../../shared/atsPlatforms.js';
 import {
   Search,
   MapPin,
@@ -122,6 +123,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
   const [updatingJobs, setUpdatingJobs] = useState(false);
   const [verifyFeedbackMap, setVerifyFeedbackMap] = useState({});
   const [copiedWechatId, setCopiedWechatId] = useState(null);
+  const [subscribingCompanyId, setSubscribingCompanyId] = useState(null);
 
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncSummary, setSyncSummary] = useState(null);
@@ -235,6 +237,39 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
     setExperienceReq('全部');
     setOnlyOpen(true);
     setOnlyReferral(false);
+  }
+
+  async function handleSubscribeCompany(company) {
+    setSubscribingCompanyId(company.id);
+    try {
+      const subRes = await api.subscribeCompanySource({ companyId: company.id, channel: 'auto' });
+      if (subRes?.staticModeNote || api?.isStaticMode) {
+        onToast(
+          'info',
+          subRes?.staticModeNote ||
+            `已为「${company.short_name}」保存 ATS 自动追新订阅配置；实时跨站抓新需运行本地服务端 npm run start。`,
+        );
+        return;
+      }
+
+      const syncRes = await api.runSync({ sourceId: subRes.source.id });
+      const result = syncRes?.results?.[0];
+      if (result?.status === 'synced') {
+        onToast(
+          'success',
+          `「${company.short_name}」追新完成：新增 ${result.added || 0} 条、更新 ${result.updated || 0} 条在线岗位！`,
+        );
+      } else if (result?.status === 'restricted_portal') {
+        onToast('info', result.message || `「${company.short_name}」门户启用合规保护，请通过官网直达浏览。`);
+      } else {
+        onToast('info', result?.message || `已订阅「${company.short_name}」自动追新源，可在信息更新中心查看。`);
+      }
+      await Promise.all([loadJobs(), loadCompanies(), loadSyncSummary()]);
+    } catch (err) {
+      onToast('error', err.message || '订阅企业追新失败');
+    } finally {
+      setSubscribingCompanyId(null);
+    }
   }
 
   async function handleCopyWechat(id, accountName) {
@@ -999,6 +1034,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                 kw && c.search_url_template
                   ? c.search_url_template.replace('{q}', encodeURIComponent(kw))
                   : null;
+              const atsSupport = getCompanyAtsSupport(c);
               return (
                 <div
                   key={c.id}
@@ -1020,9 +1056,19 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                           </div>
                         </div>
                       </div>
-                      <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${badge.cls}`}>
-                        {badge.text}
-                      </span>
+                      <div className="flex flex-wrap items-center justify-end gap-1">
+                        {atsSupport?.autoSyncable && (
+                          <span
+                            className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700"
+                            title={`已对接 ${atsSupport.label} 公开明文接口，支持自动追新`}
+                          >
+                            可自动追新 · {atsSupport.label}
+                          </span>
+                        )}
+                        <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${badge.cls}`}>
+                          {badge.text}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="mt-3 flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700">
@@ -1093,6 +1139,18 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                         >
                           带参搜官网 <ExternalLink className="h-3 w-3" />
                         </a>
+                      )}
+                      {atsSupport?.autoSyncable && (
+                        <button
+                          type="button"
+                          disabled={subscribingCompanyId === c.id}
+                          onClick={() => handleSubscribeCompany(c)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                          title={`一键订阅 ${c.short_name}（${atsSupport.label}）自动追新`}
+                        >
+                          <RefreshCw className={`h-3 w-3 ${subscribingCompanyId === c.id ? 'animate-spin' : ''}`} />
+                          {subscribingCompanyId === c.id ? '追新中...' : '订阅追新'}
+                        </button>
                       )}
                       {c.official_social_url && c.official_social_url !== c.official_campus_url && (
                         <a

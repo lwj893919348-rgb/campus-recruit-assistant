@@ -14,11 +14,21 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 
+import { getCompanyAtsSupport } from '../../../shared/atsPlatforms.js';
+
 const SOURCE_TYPE_LABELS = {
   builtin_catalog: '内置名企库',
   lifecycle_audit: '生命周期巡检',
   catalog: '内置名企库',
   lifecycle: '生命周期巡检',
+  ats_auto: 'ATS 智能同步',
+  beisen_zhiye: '北森招聘云',
+  hotjob_wecruit: '大易 HotJob',
+  greenhouse: 'Greenhouse',
+  lever: 'Lever',
+  ashby: 'Ashby',
+  moka_open: 'Moka 公开源',
+  feishu_hire: '飞书公开源',
   rss_atom: 'RSS / Atom',
   json_feed: 'JSON Feed',
   html_jsonld: '网页 JSON-LD',
@@ -59,7 +69,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
   const [showAddSource, setShowAddSource] = useState(false);
   const [sourceForm, setSourceForm] = useState({
     name: '',
-    sourceType: 'rss_atom',
+    sourceType: 'ats_auto',
     url: '',
     defaultCompanyId: '',
     autoIntervalHours: 6,
@@ -137,10 +147,10 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
         ...sourceForm,
         defaultCompanyId: sourceForm.defaultCompanyId || null,
       });
-      onToast('success', '已添加公开校招订阅源，可直接点击同步测试解析效果！');
+      onToast('success', '已添加官方 ATS / 公开招聘订阅源，可直接点击右侧同步按钮测试拉取！');
       setSourceForm({
         name: '',
-        sourceType: 'rss_atom',
+        sourceType: 'ats_auto',
         url: '',
         defaultCompanyId: '',
         autoIntervalHours: 6,
@@ -338,6 +348,41 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                   onSubmit={handleAddSource}
                   className="space-y-3 rounded-xl border border-blue-100 bg-blue-50/40 p-4"
                 >
+                  {(() => {
+                    const quickList = (companies || [])
+                      .map((c) => ({ company: c, ats: getCompanyAtsSupport(c) }))
+                      .filter((item) => item.ats?.autoSyncable);
+                    if (quickList.length === 0) return null;
+                    return (
+                      <div className="rounded-lg border border-emerald-200/80 bg-emerald-50/70 p-2.5">
+                        <div className="mb-1.5 flex items-center justify-between text-[11px] font-medium text-emerald-900">
+                          <span>快速选用内置「可自动追新」名企官网（{quickList.length} 家北森 / 大易明文公开源，点选即填入）：</span>
+                        </div>
+                        <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">
+                          {quickList.map(({ company: c, ats }) => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() =>
+                                setSourceForm((prev) => ({
+                                  ...prev,
+                                  name: `${c.short_name} · ${ats.label}`,
+                                  sourceType: 'ats_auto',
+                                  url: ats.url || c.official_campus_url || c.official_social_url || '',
+                                  defaultCompanyId: c.id,
+                                }))
+                              }
+                              className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-white px-2 py-0.5 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100"
+                            >
+                              <span>{c.short_name}</span>
+                              <span className="text-[10px] text-emerald-600">({ats.label})</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div className="sm:col-span-2">
                       <label className="mb-1 block text-xs font-medium text-slate-700">订阅源名称 *</label>
@@ -345,7 +390,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                         required
                         value={sourceForm.name}
                         onChange={(e) => setSourceForm({ ...sourceForm, name: e.target.value })}
-                        placeholder="如：校招公告 RSS / 某企业公开 JSON 源"
+                        placeholder="如：科大讯飞 · 北森招聘云 / 校招公告 RSS"
                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                       />
                     </div>
@@ -356,6 +401,14 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                         onChange={(e) => setSourceForm({ ...sourceForm, sourceType: e.target.value })}
                         className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                       >
+                        <option value="ats_auto">ATS 智能识别 · 推荐</option>
+                        <option value="beisen_zhiye">北森招聘云 (*.zhiye.com)</option>
+                        <option value="hotjob_wecruit">大易 HotJob (*.hotjob.cn)</option>
+                        <option value="greenhouse">Greenhouse Open Board</option>
+                        <option value="lever">Lever Postings</option>
+                        <option value="ashby">Ashby Job Board</option>
+                        <option value="moka_open">Moka 公开源 (仅免密明文)</option>
+                        <option value="feishu_hire">飞书公开源 (仅 JSON-LD)</option>
                         <option value="rss_atom">RSS / Atom Feed</option>
                         <option value="json_feed">JSON Feed (结构化岗位)</option>
                         <option value="html_jsonld">网页 Schema.org JSON-LD</option>
@@ -406,7 +459,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
 
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <span className="text-[11px] text-slate-500">
-                      合规声明：仅读取公开标准 Feed/JSON-LD；遇到 401/403/429 登录或反爬门禁将自动跳过并提示。
+                      合规声明：仅读取北森/大易/Greenhouse 等免密明文公开接口及标准 Feed/JSON-LD；遇到 Moka 加密或飞书签名门禁、401/403/429 限制将自动跳过并标为受保护。
                     </span>
                     <button
                       type="submit"

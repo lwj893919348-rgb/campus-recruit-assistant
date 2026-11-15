@@ -8,7 +8,10 @@ import {
 } from '../services/syncEngine.js';
 import { isPrivateOrLoopbackHost } from '../services/officialVerifier.js';
 
-const ALLOWED_SOURCE_TYPES = new Set(['rss_atom', 'json_feed', 'html_jsonld']);
+import nodeCrypto from 'node:crypto';
+import { ALL_SYNC_SOURCE_TYPES, detectAtsPlatform, getCompanyAtsSupport } from '../../shared/atsPlatforms.js';
+
+const ALLOWED_SOURCE_TYPES = new Set(ALL_SYNC_SOURCE_TYPES);
 const BUILTIN_SOURCE_IDS = new Set(['src-builtin-catalog', 'src-lifecycle-audit']);
 
 function formatRunRow(row) {
@@ -112,7 +115,10 @@ export function createSyncRouter(db, options = {}) {
       return res.status(400).json({ error: '订阅源名称不能为空。' });
     }
     if (!ALLOWED_SOURCE_TYPES.has(sourceType)) {
-      return res.status(400).json({ error: '不支持的订阅源格式，仅支持 rss_atom / json_feed / html_jsonld。' });
+      return res.status(400).json({
+        error:
+          '不支持的订阅源格式，请使用 ats_auto / beisen_zhiye / hotjob_wecruit / greenhouse / lever / ashby / rss_atom / json_feed / html_jsonld。',
+      });
     }
     if (!url || !url.trim()) {
       return res.status(400).json({ error: '订阅源 URL 不能为空。' });
@@ -287,6 +293,74 @@ export function createSyncRouter(db, options = {}) {
       lifecycleStats,
       counts: getSyncCounts(db),
     });
+  });
+
+  router.post('/sync/sources/subscribe-company', (req, res) => {
+    const { companyId, channel = 'auto' } = req.body || {};
+    if (!companyId) {
+      return res.status(400).json({ error: '缺少 companyId 参数。' });
+    }
+
+    const company = db.prepare('SELECT * FROM companies WHERE id = ?').get(companyId);
+    if (!company) {
+      return res.status(404).json({ error: '未找到指定企业。' });
+    }
+
+    const atsInfo = getCompanyAtsSupport(company);
+    if (!atsInfo?.autoSyncable) {
+      return res.status(400).json({
+        error:
+          atsInfo?.reason ||
+          '该企业官网暂不支持免密明文 ATS 自动同步（若为 Moka / 飞书门户请使用官网直达或粘贴招聘公告提取）。',
+        atsInfo,
+      });
+    }
+
+    let targetUrl = atsInfo.url || company.official_campus_url || company.official_social_url || '';
+    if (channel === 'social' && company.official_social_url) {
+      const socialDetected = detectAtsPlatform(company.official_social_url, 'ats_auto');
+      const socialPlatform = typeof socialDetected === 'string' ? socialDetected : socialDetected?.platform;
+      if (['beisen_zhiye', 'hotjob_wecruit', 'greenhouse', 'lever', 'ashby'].includes(socialPlatform)) {
+        targetUrl = company.official_social_url;
+      }
+    } else if (channel === 'campus' && company.official_campus_url) {
+      const campusDetected = detectAtsPlatform(company.official_campus_url, 'ats_auto');
+      const campusPlatform = typeof campusDetected === 'string' ? campusDetected : campusDetected?.platform;
+      if (['beisen_zhiye', 'hotjob_wecruit', 'greenhouse', 'lever', 'ashby'].includes(campusPlatform)) {
+        targetUrl = company.official_campus_url;
+      }
+    }
+
+    if (!targetUrl) {
+      return res.status(400).json({ error: '该企业缺少有效的公开 ATS 招聘入口地址。' });
+    }
+
+    const existing = db.prepare('SELECT * FROM sync_sources WHERE url = ?').get(targetUrl);
+    if (existing) {
+      if (!existing.enabled) {
+        db.prepare('UPDATE sync_sources SET enabled = 1 WHERE id = ?').run(existing.id);
+      }
+      const updatedRow = db.prepare('SELECT * FROM sync_sources WHERE id = ?').get(existing.id);
+      return res.json({ source: updatedRow, created: false, atsInfo });
+    }
+
+    const id = `src-ats-${nodeCrypto.randomUUID().slice(0, 8)}`;
+    const now = new Date().toISOString();
+    const label = atsInfo.label || '官方 ATS';
+    const name = `${company.short_name || company.name} · ${label}`;
+
+    db.prepare(
+      `
+      INSERT INTO sync_sources (
+        id, name, source_type, url, default_company_id, enabled, auto_interval_hours,
+        last_status, last_message, items_count, created_at
+      )
+      VALUES (?, ?, 'ats_auto', ?, ?, 1, 6, 'idle', '已订阅官方 ATS 自动追新，可立即同步', 0, ?)
+      `,
+    ).run(id, name, targetUrl, company.id, now);
+
+    const createdRow = db.prepare('SELECT * FROM sync_sources WHERE id = ?').get(id);
+    return res.status(201).json({ source: createdRow, created: true, atsInfo });
   });
 
   return router;

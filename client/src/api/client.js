@@ -135,6 +135,10 @@ export const api = {
     IS_STATIC_MODE
       ? localEngine.createSyncSource(data)
       : request('/api/sync/sources', { method: 'POST', body: JSON.stringify(data) }),
+  subscribeCompanySource: (data) =>
+    IS_STATIC_MODE
+      ? localEngine.subscribeCompanySource(data)
+      : request('/api/sync/sources/subscribe-company', { method: 'POST', body: JSON.stringify(data) }),
   updateSyncSource: (id, data) =>
     IS_STATIC_MODE
       ? localEngine.updateSyncSource(id, data)

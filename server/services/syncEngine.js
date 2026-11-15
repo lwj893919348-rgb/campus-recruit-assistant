@@ -6,6 +6,7 @@ import {
   inferRecruitTypeAndExp,
   parseWechatAnnouncementText,
 } from '../../shared/jobParser.js';
+import { ATS_SOURCE_TYPES } from '../../shared/atsPlatforms.js';
 import {
   extractAtsTenantPrefix,
   extractRootDomain,
@@ -13,6 +14,7 @@ import {
   isPrivateOrLoopbackHost,
   isSharedAtsDomain,
 } from './officialVerifier.js';
+import { fetchAtsSourceJobs } from './atsAdapters.js';
 
 export { inferCategory, inferCityInfo, parseWechatAnnouncementText };
 
@@ -417,6 +419,61 @@ export async function syncSingleSource(
 
   if (!allowPrivateHosts && isPrivateOrLoopbackHost(parsedUrl.hostname)) {
     return { sourceId: source.id, name: source.name, status: 'blocked', added: 0, updated: 0, expired: 0, message: '禁止同步内网保留地址' };
+  }
+
+  let effectiveSourceType = source.source_type;
+  if (ATS_SOURCE_TYPES.includes(effectiveSourceType)) {
+    const atsResult = await fetchAtsSourceJobs(source, {
+      fetchImpl: typeof fetchImpl !== 'undefined' ? fetchImpl : fetch,
+      timeoutMs: typeof timeoutMs !== 'undefined' ? timeoutMs : 12000,
+      allowPrivateHosts,
+      parseJsonLdJobPostings,
+      parseJsonFeed,
+    });
+
+    if (atsResult.status === 'fallback_generic') {
+      effectiveSourceType = atsResult.fallbackType || 'html_jsonld';
+    } else if (atsResult.status !== 'synced') {
+      const checkedAt = new Date().toISOString();
+      db.prepare('UPDATE sync_sources SET last_synced_at = ?, last_status = ?, last_message = ? WHERE id = ?').run(
+        checkedAt,
+        atsResult.status,
+        atsResult.message || 'ATS 同步受限',
+        source.id,
+      );
+      return {
+        sourceId: source.id,
+        name: source.name,
+        status: atsResult.status,
+        added: 0,
+        updated: 0,
+        expired: 0,
+        message: atsResult.message || 'ATS 同步受限',
+      };
+    } else {
+      const res = upsertImportedItems(db, atsResult.items || [], {
+        sourceKey: source.id,
+        syncSource: effectiveSourceType,
+        defaultCompanyId: source.default_company_id,
+        allowPrivateHosts,
+      });
+      const syncedAt = new Date().toISOString();
+      const summaryMsg = atsResult.message
+        ? `${atsResult.message}（新增 ${res.added}，更新 ${res.updated}）`
+        : `同步完成（新增 ${res.added}，更新 ${res.updated}）`;
+      db.prepare(
+        'UPDATE sync_sources SET last_synced_at = ?, last_status = ?, last_message = ?, items_count = ? WHERE id = ?',
+      ).run(syncedAt, 'synced', summaryMsg, (atsResult.items || []).length, source.id);
+      return {
+        sourceId: source.id,
+        name: source.name,
+        status: 'synced',
+        added: res.added,
+        updated: res.updated,
+        expired: 0,
+        message: summaryMsg,
+      };
+    }
   }
 
   const controller = new AbortController();
