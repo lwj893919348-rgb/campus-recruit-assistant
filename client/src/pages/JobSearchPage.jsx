@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCompanyAtsSupport } from '../../../shared/atsPlatforms.js';
 import { resolveJobOfficialTarget } from '../../../shared/jobLinkResolver.js';
 import {
@@ -93,7 +93,17 @@ const VERIFY_BADGE_MAP = {
   unreachable: { text: '暂不可直连', cls: 'bg-rose-50/90 text-rose-700 border-rose-200/80' },
 };
 
-export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTrack, onToast, refreshSignal }) {
+const JOBS_PAGE_SIZE = 40;
+const COMPANIES_PAGE_SIZE = 36;
+
+export const JobSearchPage = memo(function JobSearchPage({
+  initialCity = '',
+  onClearInitialCity,
+  onQuickTrack,
+  onToast,
+  refreshSignal = 0,
+  isActive = true,
+}) {
   const [subView, setSubView] = useState('jobs'); // 'jobs' | 'companies'
   const [q, setQ] = useState('');
   const [regionGroup, setRegionGroup] = useState('全部');
@@ -119,6 +129,17 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
   });
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filtering, setFiltering] = useState(false);
+  const [visibleJobCount, setVisibleJobCount] = useState(JOBS_PAGE_SIZE);
+  const [visibleCompanyCount, setVisibleCompanyCount] = useState(COMPANIES_PAGE_SIZE);
+
+  const hasLoadedJobsRef = useRef(false);
+  const prevQRef = useRef(q);
+  const jobRequestSeqRef = useRef(0);
+  const lastRefreshSignalRef = useRef(refreshSignal);
+  const pendingRefreshRef = useRef(false);
+  const jobSentinelRef = useRef(null);
+  const companySentinelRef = useRef(null);
 
   const [verifyingId, setVerifyingId] = useState(null);
   const [batchVerifying, setBatchVerifying] = useState(false);
@@ -142,51 +163,68 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
 
   useEffect(() => {
     if (initialCity) {
+      setSubView('jobs');
       setSelectedCities([initialCity]);
       setRegionGroup('全部');
       onClearInitialCity?.();
     }
   }, [initialCity, onClearInitialCity]);
 
-  const loadJobs = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.getJobs({
-        q,
-        cities: selectedCities.join(','),
-        cityTier: selectedCities.length === 0 ? regionGroup : '全部',
-        season,
-        gradYear,
-        companyType,
-        category,
-        recruitType,
-        experienceReq,
-        onlyOpen: onlyOpen ? '1' : '',
-        onlyReferral: onlyReferral ? '1' : '',
-        onlyExactDetail: onlyExactDetail ? '1' : '',
-      });
-      setJobs(data.jobs);
-      setFacets(data.facets);
-    } catch (err) {
-      onToast('error', err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    q,
-    selectedCities,
-    regionGroup,
-    season,
-    gradYear,
-    companyType,
-    category,
-    recruitType,
-    experienceReq,
-    onlyOpen,
-    onlyReferral,
-    onlyExactDetail,
-    onToast,
-  ]);
+  const loadJobs = useCallback(
+    async ({ silent = false } = {}) => {
+      const reqSeq = ++jobRequestSeqRef.current;
+      if (!hasLoadedJobsRef.current && !silent) {
+        setLoading(true);
+      } else if (!silent) {
+        setFiltering(true);
+      }
+      try {
+        const data = await api.getJobs({
+          q,
+          cities: selectedCities.join(','),
+          cityTier: selectedCities.length === 0 ? regionGroup : '全部',
+          season,
+          gradYear,
+          companyType,
+          category,
+          recruitType,
+          experienceReq,
+          onlyOpen: onlyOpen ? '1' : '',
+          onlyReferral: onlyReferral ? '1' : '',
+          onlyExactDetail: onlyExactDetail ? '1' : '',
+        });
+        if (reqSeq !== jobRequestSeqRef.current) return;
+        setJobs(data.jobs);
+        setFacets(data.facets);
+        hasLoadedJobsRef.current = true;
+        if (!silent) setVisibleJobCount(JOBS_PAGE_SIZE);
+      } catch (err) {
+        if (reqSeq === jobRequestSeqRef.current) {
+          onToast('error', err.message);
+        }
+      } finally {
+        if (reqSeq === jobRequestSeqRef.current) {
+          setLoading(false);
+          setFiltering(false);
+        }
+      }
+    },
+    [
+      q,
+      selectedCities,
+      regionGroup,
+      season,
+      gradYear,
+      companyType,
+      category,
+      recruitType,
+      experienceReq,
+      onlyOpen,
+      onlyReferral,
+      onlyExactDetail,
+      onToast,
+    ],
+  );
 
   const loadCompanies = useCallback(async () => {
     try {
@@ -207,16 +245,35 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      loadJobs();
-    }, 180);
-    return () => clearTimeout(timer);
-  }, [loadJobs, refreshSignal]);
+    const queryChanged = prevQRef.current !== q;
+    prevQRef.current = q;
+    if (queryChanged) {
+      const timer = setTimeout(() => {
+        loadJobs();
+      }, 160);
+      return () => clearTimeout(timer);
+    }
+    loadJobs();
+    return undefined;
+  }, [loadJobs, q]);
 
   useEffect(() => {
     loadCompanies();
     loadSyncSummary();
-  }, [loadCompanies, loadSyncSummary, refreshSignal]);
+  }, [loadCompanies, loadSyncSummary]);
+
+  useEffect(() => {
+    if (refreshSignal !== lastRefreshSignalRef.current) {
+      lastRefreshSignalRef.current = refreshSignal;
+      pendingRefreshRef.current = true;
+    }
+    if (isActive && pendingRefreshRef.current) {
+      pendingRefreshRef.current = false;
+      loadJobs({ silent: true });
+      loadCompanies();
+      loadSyncSummary();
+    }
+  }, [refreshSignal, isActive, loadJobs, loadCompanies, loadSyncSummary]);
 
   function toggleCity(cityName) {
     setSelectedCities((prev) =>
@@ -374,31 +431,85 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
     }
   }
 
-  const filteredCompanies = companies.filter((c) => {
-    if (companyWallType !== '全部' && c.company_type !== companyWallType) return false;
-    if (companyQuery.trim()) {
-      const kw = companyQuery.trim().toLowerCase();
-      const hay = `${c.name} ${c.short_name} ${c.legal_name || ''} ${c.entity_tag || ''} ${c.wechat_account || ''} ${c.industry} ${c.hq_city} ${c.company_type}`.toLowerCase();
-      if (!hay.includes(kw)) return false;
-    }
-    return true;
-  });
-
-  const visibleCityChips =
-    regionGroup === '全部'
-      ? facets.cities
-      : facets.cities.filter((c) => {
-          const g = REGION_GROUPS.find((rg) => rg.id === regionGroup);
-          return g ? g.cities.includes(c.city) || c.city_tier === regionGroup : true;
-        });
-
-  const recruitTypeCountMap = Object.fromEntries(
-    (facets.recruitTypes || []).map((item) => [item.value, item.count]),
+  const filteredCompanies = useMemo(
+    () =>
+      companies.filter((c) => {
+        if (companyWallType !== '全部' && c.company_type !== companyWallType) return false;
+        if (companyQuery.trim()) {
+          const kw = companyQuery.trim().toLowerCase();
+          const hay = `${c.name} ${c.short_name} ${c.legal_name || ''} ${c.entity_tag || ''} ${c.wechat_account || ''} ${c.industry} ${c.hq_city} ${c.company_type}`.toLowerCase();
+          if (!hay.includes(kw)) return false;
+        }
+        return true;
+      }),
+    [companies, companyWallType, companyQuery],
   );
-  const categoryCountMap = Object.fromEntries(
-    (facets.categories || []).map((item) => [item.value, item.count]),
+
+  useEffect(() => {
+    setVisibleCompanyCount(COMPANIES_PAGE_SIZE);
+  }, [companyWallType, companyQuery]);
+
+  const visibleJobs = useMemo(() => jobs.slice(0, visibleJobCount), [jobs, visibleJobCount]);
+  const visibleCompanies = useMemo(
+    () => filteredCompanies.slice(0, visibleCompanyCount),
+    [filteredCompanies, visibleCompanyCount],
   );
-  const totalRecruitFacetCount = (facets.recruitTypes || []).reduce((sum, item) => sum + (item.count || 0), 0);
+
+  useEffect(() => {
+    if (!isActive || subView !== 'jobs' || visibleJobCount >= jobs.length) return undefined;
+    const node = jobSentinelRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleJobCount((prev) => Math.min(prev + JOBS_PAGE_SIZE, jobs.length));
+        }
+      },
+      { rootMargin: '360px 0px' },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isActive, subView, visibleJobCount, jobs.length]);
+
+  useEffect(() => {
+    if (!isActive || subView !== 'companies' || visibleCompanyCount >= filteredCompanies.length) return undefined;
+    const node = companySentinelRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleCompanyCount((prev) => Math.min(prev + COMPANIES_PAGE_SIZE, filteredCompanies.length));
+        }
+      },
+      { rootMargin: '360px 0px' },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isActive, subView, visibleCompanyCount, filteredCompanies.length]);
+
+  const visibleCityChips = useMemo(
+    () =>
+      regionGroup === '全部'
+        ? facets.cities
+        : facets.cities.filter((c) => {
+            const g = REGION_GROUPS.find((rg) => rg.id === regionGroup);
+            return g ? g.cities.includes(c.city) || c.city_tier === regionGroup : true;
+          }),
+    [regionGroup, facets.cities],
+  );
+
+  const recruitTypeCountMap = useMemo(
+    () => Object.fromEntries((facets.recruitTypes || []).map((item) => [item.value, item.count])),
+    [facets.recruitTypes],
+  );
+  const categoryCountMap = useMemo(
+    () => Object.fromEntries((facets.categories || []).map((item) => [item.value, item.count])),
+    [facets.categories],
+  );
+  const totalRecruitFacetCount = useMemo(
+    () => (facets.recruitTypes || []).reduce((sum, item) => sum + (item.count || 0), 0),
+    [facets.recruitTypes],
+  );
 
   return (
     <div className="space-y-5">
@@ -792,8 +903,13 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              {jobs.map((job) => {
+            <>
+              <div
+                className={`grid grid-cols-1 gap-4 transition-opacity duration-150 lg:grid-cols-2 ${
+                  filtering ? 'opacity-65' : 'opacity-100'
+                }`}
+              >
+                {visibleJobs.map((job) => {
                 const badge =
                   VERIFY_BADGE_MAP[job.company_verification_status] || VERIFY_BADGE_MAP.verified_official;
                 const liveResult = verifyFeedbackMap[job.id];
@@ -1002,7 +1118,30 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                   </article>
                 );
               })}
-            </div>
+              </div>
+
+              {visibleJobCount < jobs.length && (
+                <div ref={jobSentinelRef} className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                  <span className="text-xs text-[#4B6366]">
+                    已显示 {visibleJobs.length} / {jobs.length} 个岗位
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setVisibleJobCount((prev) => Math.min(prev + JOBS_PAGE_SIZE, jobs.length))}
+                    className="fresh-btn-secondary rounded-xl px-3.5 py-1.5 text-xs font-medium"
+                  >
+                    加载更多
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVisibleJobCount(jobs.length)}
+                    className="rounded-xl px-2.5 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-50"
+                  >
+                    展开全部
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </>
       ) : (
@@ -1077,7 +1216,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredCompanies.map((c) => {
+            {visibleCompanies.map((c) => {
               const badge = VERIFY_BADGE_MAP[c.verification_status] || VERIFY_BADGE_MAP.verified_official;
               const kw = portalKeyword.trim() || q.trim();
               const directSearchUrl =
@@ -1226,6 +1365,30 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
               );
             })}
           </div>
+
+          {visibleCompanyCount < filteredCompanies.length && (
+            <div ref={companySentinelRef} className="flex flex-wrap items-center justify-center gap-2 pt-2">
+              <span className="text-xs text-[#4B6366]">
+                已显示 {visibleCompanies.length} / {filteredCompanies.length} 家企业
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setVisibleCompanyCount((prev) => Math.min(prev + COMPANIES_PAGE_SIZE, filteredCompanies.length))
+                }
+                className="fresh-btn-secondary rounded-xl px-3.5 py-1.5 text-xs font-medium"
+              >
+                加载更多企业
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisibleCompanyCount(filteredCompanies.length)}
+                className="rounded-xl px-2.5 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-50"
+              >
+                展开全部
+              </button>
+            </div>
+          )}
         </section>
       )}
 
@@ -1803,4 +1966,4 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
       />
     </div>
   );
-}
+});

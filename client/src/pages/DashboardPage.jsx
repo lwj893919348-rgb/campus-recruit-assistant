@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Briefcase,
   FileText,
@@ -14,24 +14,35 @@ import {
 import { api } from '../api/client.js';
 import { APPLICATION_STAGES, STAGE_MAP, formatEventCountdown } from '../data/constants.js';
 
-export function DashboardPage({ onNavigate, onFilterCity, onOpenResume, onQuickTrack }) {
+export const DashboardPage = memo(function DashboardPage({
+  onNavigate,
+  onFilterCity,
+  onOpenResume,
+  onQuickTrack,
+  refreshSignal = 0,
+  isActive = true,
+}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const lastLoadedSignalRef = useRef(-1);
+
+  const loadDashboard = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    try {
+      const res = await api.getDashboard();
+      setData(res);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let active = true;
-    api
-      .getDashboard()
-      .then((res) => {
-        if (active) setData(res);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+    if (!isActive) return;
+    if (lastLoadedSignalRef.current === refreshSignal) return;
+    const isInitial = lastLoadedSignalRef.current === -1;
+    lastLoadedSignalRef.current = refreshSignal;
+    loadDashboard({ silent: !isInitial });
+  }, [isActive, refreshSignal, loadDashboard]);
 
   if (loading || !data) {
     return (
@@ -440,4 +451,4 @@ export function DashboardPage({ onNavigate, onFilterCity, onOpenResume, onQuickT
       </div>
     </div>
   );
-}
+});

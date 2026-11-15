@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus,
   LayoutGrid,
@@ -35,7 +35,14 @@ const EMPTY_FORM = {
   notes: '',
 };
 
-export function ApplicationsPage({ resumes, onOpenResume, onToast, refreshSignal }) {
+export const ApplicationsPage = memo(function ApplicationsPage({
+  resumes,
+  onOpenResume,
+  onToast,
+  refreshSignal = 0,
+  isActive = true,
+  onDataMutated,
+}) {
   const [viewMode, setViewMode] = useState('kanban'); // 'kanban' | 'table'
   const [applications, setApplications] = useState([]);
   const [counts, setCounts] = useState({});
@@ -50,27 +57,68 @@ export function ApplicationsPage({ resumes, onOpenResume, onToast, refreshSignal
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
-  const loadApplications = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.getApplications({ q, status: filterStatus, city: filterCity });
-      setApplications(data.applications);
-      setCounts(data.counts || {});
-      setHasDemo(Boolean(data.hasDemo));
-    } catch (err) {
-      onToast('error', err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [q, filterStatus, filterCity, onToast]);
+  const hasLoadedOnceRef = useRef(false);
+  const prevQRef = useRef(q);
+  const reqSeqRef = useRef(0);
+  const lastRefreshSignalRef = useRef(refreshSignal);
+  const pendingRefreshRef = useRef(false);
+
+  const loadApplications = useCallback(
+    async ({ silent = false } = {}) => {
+      const seq = ++reqSeqRef.current;
+      if (!hasLoadedOnceRef.current && !silent) {
+        setLoading(true);
+      }
+      try {
+        const data = await api.getApplications({ q, status: filterStatus, city: filterCity });
+        if (seq !== reqSeqRef.current) return;
+        setApplications(data.applications);
+        setCounts(data.counts || {});
+        setHasDemo(Boolean(data.hasDemo));
+        hasLoadedOnceRef.current = true;
+      } catch (err) {
+        if (seq === reqSeqRef.current) {
+          onToast('error', err.message);
+        }
+      } finally {
+        if (seq === reqSeqRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [q, filterStatus, filterCity, onToast],
+  );
 
   useEffect(() => {
-    const timer = setTimeout(loadApplications, 150);
-    return () => clearTimeout(timer);
-  }, [loadApplications, refreshSignal]);
+    const queryChanged = prevQRef.current !== q;
+    prevQRef.current = q;
+    if (queryChanged) {
+      const timer = setTimeout(() => loadApplications(), 150);
+      return () => clearTimeout(timer);
+    }
+    loadApplications();
+    return undefined;
+  }, [loadApplications, q]);
 
-  const uniqueCities = Array.from(new Set(applications.map((a) => a.city).filter(Boolean)));
-  const totalCount = Object.values(counts).reduce((acc, n) => acc + (n || 0), 0);
+  useEffect(() => {
+    if (refreshSignal !== lastRefreshSignalRef.current) {
+      lastRefreshSignalRef.current = refreshSignal;
+      pendingRefreshRef.current = true;
+    }
+    if (isActive && pendingRefreshRef.current) {
+      pendingRefreshRef.current = false;
+      loadApplications({ silent: true });
+    }
+  }, [refreshSignal, isActive, loadApplications]);
+
+  const uniqueCities = useMemo(
+    () => Array.from(new Set(applications.map((a) => a.city).filter(Boolean))),
+    [applications],
+  );
+  const totalCount = useMemo(
+    () => Object.values(counts).reduce((acc, n) => acc + (n || 0), 0),
+    [counts],
+  );
 
   function openNewDrawer() {
     const defResume = resumes.find((r) => r.is_default) || resumes[0];
@@ -114,7 +162,8 @@ export function ApplicationsPage({ resumes, onOpenResume, onToast, refreshSignal
         onToast('success', `已新增投递记录：${form.company_name}`);
       }
       setDrawerOpen(false);
-      loadApplications();
+      await loadApplications({ silent: true });
+      onDataMutated?.();
     } catch (err) {
       onToast('error', err.message);
     } finally {
@@ -127,7 +176,8 @@ export function ApplicationsPage({ resumes, onOpenResume, onToast, refreshSignal
       await api.patchApplicationStatus(appId, nextStatus);
       const st = STAGE_MAP[nextStatus];
       onToast('success', `状态已更新为「${st?.label || nextStatus}」`);
-      loadApplications();
+      await loadApplications({ silent: true });
+      onDataMutated?.();
     } catch (err) {
       onToast('error', err.message);
     }
@@ -138,7 +188,8 @@ export function ApplicationsPage({ resumes, onOpenResume, onToast, refreshSignal
     try {
       await api.deleteApplication(app.id);
       onToast('info', '已删除投递记录');
-      loadApplications();
+      await loadApplications({ silent: true });
+      onDataMutated?.();
     } catch (err) {
       onToast('error', err.message);
     }
@@ -149,7 +200,8 @@ export function ApplicationsPage({ resumes, onOpenResume, onToast, refreshSignal
     try {
       const res = await api.clearDemoApplications();
       onToast('info', `已清除 ${res.cleared} 条演示数据`);
-      loadApplications();
+      await loadApplications({ silent: true });
+      onDataMutated?.();
     } catch (err) {
       onToast('error', err.message);
     }
@@ -751,4 +803,4 @@ export function ApplicationsPage({ resumes, onOpenResume, onToast, refreshSignal
       )}
     </div>
   );
-}
+});

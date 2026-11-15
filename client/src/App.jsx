@@ -17,15 +17,38 @@ const TABS = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [visitedTabs, setVisitedTabs] = useState(() => ({ dashboard: true }));
   const [resumes, setResumes] = useState([]);
   const [activeResumeIdFromNav, setActiveResumeIdFromNav] = useState('');
   const [initialCityFilter, setInitialCityFilter] = useState('');
 
   const [trackModalJob, setTrackModalJob] = useState(null);
   const [refreshSignal, setRefreshSignal] = useState(0);
+  const [resumeSignal, setResumeSignal] = useState(0);
   const [backupGen, setBackupGen] = useState(0);
   const [toasts, setToasts] = useState([]);
   const backupInputRef = useRef(null);
+  const scrollPositionsRef = useRef({});
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+
+  const preloadTab = useCallback((tabId) => {
+    setVisitedTabs((prev) => (prev[tabId] ? prev : { ...prev, [tabId]: true }));
+  }, []);
+
+  const switchTab = useCallback((nextTab, { scrollToTop = false } = {}) => {
+    const prevTab = activeTabRef.current;
+    if (prevTab === nextTab && !scrollToTop) return;
+
+    scrollPositionsRef.current[prevTab] = window.scrollY;
+    setVisitedTabs((prev) => (prev[nextTab] ? prev : { ...prev, [nextTab]: true }));
+    setActiveTab(nextTab);
+
+    const targetY = scrollToTop ? 0 : scrollPositionsRef.current[nextTab] || 0;
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: targetY, behavior: 'auto' });
+    });
+  }, []);
 
   const addToast = useCallback((type, message) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -46,14 +69,43 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  const handleFilterCity = useCallback((city) => {
-    setInitialCityFilter(city);
-    setActiveTab('jobs');
+  const handleNavigate = useCallback(
+    (nextTab) => {
+      switchTab(nextTab, { scrollToTop: true });
+    },
+    [switchTab],
+  );
+
+  const handleFilterCity = useCallback(
+    (city) => {
+      setInitialCityFilter(city);
+      switchTab('jobs', { scrollToTop: true });
+    },
+    [switchTab],
+  );
+
+  const handleOpenResume = useCallback(
+    (resumeId) => {
+      if (resumeId) setActiveResumeIdFromNav(resumeId);
+      switchTab('resume', { scrollToTop: true });
+    },
+    [switchTab],
+  );
+
+  const handleQuickTrack = useCallback((job) => {
+    setTrackModalJob(job);
   }, []);
 
-  const handleOpenResume = useCallback((resumeId) => {
-    if (resumeId) setActiveResumeIdFromNav(resumeId);
-    setActiveTab('resume');
+  const handleClearInitialCity = useCallback(() => {
+    setInitialCityFilter('');
+  }, []);
+
+  const handleDataMutated = useCallback(() => {
+    setRefreshSignal((s) => s + 1);
+  }, []);
+
+  const handleResumeMutated = useCallback(() => {
+    setResumeSignal((s) => s + 1);
   }, []);
 
   const handleTrackSubmit = useCallback(
@@ -102,11 +154,11 @@ export default function App() {
   return (
     <div className="min-h-screen text-[#132A2E]">
       {/* Top Navigation */}
-      <header className="no-print sticky top-0 z-40 border-b border-teal-900/[0.07] bg-white/75 backdrop-blur-xl">
+      <header className="no-print sticky top-0 z-40 border-b border-teal-900/[0.07] bg-white/82 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
           <button
             type="button"
-            onClick={() => setActiveTab('dashboard')}
+            onClick={() => switchTab('dashboard')}
             className="flex items-center gap-2.5 text-left"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white shadow-[0_6px_14px_-4px_rgba(13,148,136,0.45)]">
@@ -127,7 +179,9 @@ export default function App() {
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setActiveTab(tab.id)}
+                    onMouseEnter={() => preloadTab(tab.id)}
+                    onFocus={() => preloadTab(tab.id)}
+                    onClick={() => switchTab(tab.id)}
                     className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition sm:text-sm ${
                       active
                         ? 'bg-white text-teal-700 shadow-[0_2px_8px_-2px_rgba(13,148,136,0.18)]'
@@ -176,42 +230,57 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Container */}
+      {/* Main Container (Keep-Alive Panels) */}
       <main key={backupGen} className="print-reset mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        {activeTab === 'dashboard' && (
-          <DashboardPage
-            onNavigate={setActiveTab}
-            onFilterCity={handleFilterCity}
-            onOpenResume={handleOpenResume}
-            onQuickTrack={(job) => setTrackModalJob(job)}
-          />
+        {visitedTabs.dashboard && (
+          <div className={activeTab === 'dashboard' ? 'fresh-tab-panel print-reset' : 'hidden no-print'}>
+            <DashboardPage
+              isActive={activeTab === 'dashboard'}
+              refreshSignal={refreshSignal + resumeSignal}
+              onNavigate={handleNavigate}
+              onFilterCity={handleFilterCity}
+              onOpenResume={handleOpenResume}
+              onQuickTrack={handleQuickTrack}
+            />
+          </div>
         )}
 
-        {activeTab === 'jobs' && (
-          <JobSearchPage
-            initialCity={initialCityFilter}
-            onClearInitialCity={() => setInitialCityFilter('')}
-            onQuickTrack={(job) => setTrackModalJob(job)}
-            onToast={addToast}
-            refreshSignal={refreshSignal}
-          />
+        {visitedTabs.jobs && (
+          <div className={activeTab === 'jobs' ? 'fresh-tab-panel print-reset' : 'hidden no-print'}>
+            <JobSearchPage
+              isActive={activeTab === 'jobs'}
+              initialCity={initialCityFilter}
+              onClearInitialCity={handleClearInitialCity}
+              onQuickTrack={handleQuickTrack}
+              onToast={addToast}
+              refreshSignal={refreshSignal}
+            />
+          </div>
         )}
 
-        {activeTab === 'resume' && (
-          <ResumeBuilderPage
-            activeResumeIdFromNav={activeResumeIdFromNav}
-            onToast={addToast}
-            onResumesChanged={setResumes}
-          />
+        {visitedTabs.resume && (
+          <div className={activeTab === 'resume' ? 'fresh-tab-panel print-reset' : 'hidden no-print'}>
+            <ResumeBuilderPage
+              isActive={activeTab === 'resume'}
+              activeResumeIdFromNav={activeResumeIdFromNav}
+              onToast={addToast}
+              onResumesChanged={setResumes}
+              onDataMutated={handleResumeMutated}
+            />
+          </div>
         )}
 
-        {activeTab === 'applications' && (
-          <ApplicationsPage
-            resumes={resumes}
-            onOpenResume={handleOpenResume}
-            onToast={addToast}
-            refreshSignal={refreshSignal}
-          />
+        {visitedTabs.applications && (
+          <div className={activeTab === 'applications' ? 'fresh-tab-panel print-reset' : 'hidden no-print'}>
+            <ApplicationsPage
+              isActive={activeTab === 'applications'}
+              resumes={resumes}
+              onOpenResume={handleOpenResume}
+              onToast={addToast}
+              refreshSignal={refreshSignal}
+              onDataMutated={handleDataMutated}
+            />
+          </div>
         )}
       </main>
 

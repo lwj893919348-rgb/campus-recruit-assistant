@@ -9,6 +9,10 @@
     --fresh-sky: #0284c7;
   }
 
+  html {
+    scrollbar-gutter: stable;
+  }
+
   html,
   body {
     font-family:
@@ -22,11 +26,21 @@
       sans-serif;
     color: var(--fresh-ink);
     background-color: #f2f9f7;
+    min-height: 100%;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-color: #f2f9f7;
     background-image:
       radial-gradient(circle at 12% 4%, rgba(20, 184, 166, 0.11) 0%, transparent 34%),
       radial-gradient(circle at 88% 2%, rgba(56, 189, 248, 0.11) 0%, transparent 32%),
       linear-gradient(165deg, #eef8f5 0%, #f5fafb 46%, #f4f7fb 100%);
-    background-attachment: fixed;
+    transform: translateZ(0);
   }
 
   .tabular-nums {
@@ -34,35 +48,55 @@
   }
 }
 
+@keyframes freshTabIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fresh-tab-panel {
+    animation: none !important;
+  }
+}
+
 @layer components {
+  .fresh-tab-panel {
+    animation: freshTabIn 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
   .fresh-card {
-    background-color: rgba(255, 255, 255, 0.88);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background-color: rgba(255, 255, 255, 0.94);
     border: 1px solid rgba(19, 78, 74, 0.08);
     border-radius: 1rem;
     box-shadow:
-      0 6px 24px -10px rgba(13, 148, 136, 0.12),
+      0 6px 24px -10px rgba(13, 148, 136, 0.11),
       0 1px 3px rgba(15, 23, 42, 0.03);
+    contain: layout style;
   }
 
   .fresh-card-hover {
     transition:
-      transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
-      box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
-      border-color 180ms ease;
+      transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 160ms cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 160ms ease;
   }
 
   .fresh-card-hover:hover {
     transform: translateY(-2px);
     border-color: rgba(13, 148, 136, 0.28);
     box-shadow:
-      0 14px 32px -12px rgba(13, 148, 136, 0.18),
+      0 14px 32px -12px rgba(13, 148, 136, 0.17),
       0 2px 6px rgba(15, 23, 42, 0.04);
   }
 
   .fresh-subcard {
-    background-color: rgba(240, 253, 250, 0.58);
+    background-color: rgba(240, 253, 250, 0.65);
     border: 1px solid rgba(13, 148, 136, 0.11);
     border-radius: 0.875rem;
   }
@@ -73,9 +107,9 @@
     border: 1px solid rgba(5, 150, 105, 0.25);
     box-shadow: 0 6px 16px -6px rgba(13, 148, 136, 0.45);
     transition:
-      transform 150ms ease,
-      box-shadow 150ms ease,
-      filter 150ms ease;
+      transform 140ms ease,
+      box-shadow 140ms ease,
+      filter 140ms ease;
   }
 
   .fresh-btn-primary:hover:not(:disabled) {
@@ -88,7 +122,7 @@
     color: #ffffff;
     border: 1px solid rgba(15, 118, 110, 0.3);
     box-shadow: 0 4px 12px -5px rgba(19, 78, 74, 0.36);
-    transition: all 150ms ease;
+    transition: filter 140ms ease, transform 140ms ease;
   }
 
   .fresh-btn-ink:hover:not(:disabled) {
@@ -96,11 +130,14 @@
   }
 
   .fresh-btn-secondary {
-    background-color: rgba(255, 255, 255, 0.92);
+    background-color: rgba(255, 255, 255, 0.94);
     color: #1e3a3a;
     border: 1px solid rgba(19, 78, 74, 0.12);
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
-    transition: all 150ms ease;
+    transition:
+      background-color 140ms ease,
+      border-color 140ms ease,
+      color 140ms ease;
   }
 
   .fresh-btn-secondary:hover:not(:disabled) {
@@ -180,6 +217,14 @@
 }
 
 @media print {
+  body::before {
+    display: none !important;
+  }
+
+  .fresh-tab-panel {
+    animation: none !important;
+  }
+
   html,
   body {
     background: #ffffff !important;

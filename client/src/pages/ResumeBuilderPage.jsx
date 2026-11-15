@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   FileText,
   Plus,
@@ -36,7 +36,13 @@ function makeId(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesChanged }) {
+export const ResumeBuilderPage = memo(function ResumeBuilderPage({
+  activeResumeIdFromNav,
+  onToast,
+  onResumesChanged,
+  onDataMutated,
+  isActive = true,
+}) {
   const [resumes, setResumes] = useState([]);
   const [currentId, setCurrentId] = useState('');
   const [draft, setDraft] = useState(null);
@@ -48,12 +54,13 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
   const [zoom, setZoom] = useState(0.72);
   const [sheetHeightPx, setSheetHeightPx] = useState(960);
 
+  const hasLoadedRef = useRef(false);
   const sheetRef = useRef(null);
   const fileInputRef = useRef(null);
 
   const fetchResumes = useCallback(
     async (preferId) => {
-      setLoading(true);
+      if (!hasLoadedRef.current) setLoading(true);
       try {
         const data = await api.getResumes();
         setResumes(data.resumes);
@@ -67,6 +74,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
           setDraft(structuredClone(chosen));
           setDirty(false);
         }
+        hasLoadedRef.current = true;
       } catch (err) {
         onToast('error', err.message);
       } finally {
@@ -77,22 +85,37 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
   );
 
   useEffect(() => {
-    fetchResumes(activeResumeIdFromNav);
+    if (!hasLoadedRef.current) {
+      fetchResumes(activeResumeIdFromNav);
+      return;
+    }
+    if (activeResumeIdFromNav && activeResumeIdFromNav !== currentId) {
+      const target = resumes.find((r) => r.id === activeResumeIdFromNav);
+      if (target) {
+        setCurrentId(target.id);
+        setDraft(structuredClone(target));
+        setDirty(false);
+      } else {
+        fetchResumes(activeResumeIdFromNav);
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeResumeIdFromNav]);
 
   // Measure real rendered A4 height to detect single-page overflow
   useEffect(() => {
+    if (!isActive) return undefined;
     const el = sheetRef.current;
     if (!el) return undefined;
     const measure = () => {
-      setSheetHeightPx(el.scrollHeight || el.offsetHeight || 960);
+      const measured = el.scrollHeight || el.offsetHeight;
+      if (measured > 0) setSheetHeightPx(measured);
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [draft]);
+  }, [draft, isActive]);
 
   function updateDraft(updater) {
     setDraft((prev) => {
@@ -147,6 +170,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
         return nextList;
       });
       setDirty(false);
+      onDataMutated?.();
       if (showSuccessToast) onToast('success', `简历「${resume.title}」已保存`);
     } catch (err) {
       onToast('error', err.message);
@@ -175,6 +199,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
       const { resume } = await api.createResume({ title });
       onToast('success', `已创建新简历「${resume.title}」`);
       await fetchResumes(resume.id);
+      onDataMutated?.();
     } catch (err) {
       onToast('error', err.message);
     }
@@ -189,6 +214,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
       const { resume } = await api.duplicateResume(draft.id, title);
       onToast('success', `已派生版本「${resume.title}」`);
       await fetchResumes(resume.id);
+      onDataMutated?.();
     } catch (err) {
       onToast('error', err.message);
     }
@@ -201,6 +227,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
       setDraft(structuredClone(resume));
       setDirty(false);
       await fetchResumes(resume.id);
+      onDataMutated?.();
       onToast('success', '已设为投递默认关联简历');
     } catch (err) {
       onToast('error', err.message);
@@ -214,6 +241,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
       await api.deleteResume(draft.id);
       onToast('info', '已删除该简历版本');
       await fetchResumes('');
+      onDataMutated?.();
     } catch (err) {
       onToast('error', err.message);
     }
@@ -976,7 +1004,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
       </div>
     </div>
   );
-}
+});
 
 function AccordionPanel({ title, isOpen, onToggle, children }) {
   return (
