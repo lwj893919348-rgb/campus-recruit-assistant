@@ -257,12 +257,12 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
   const recentRuns = statusData?.recentRuns || [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-xs">
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+    <div className="fresh-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fresh-modal flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-teal-900/10 bg-gradient-to-r from-teal-50/80 via-white to-sky-50/55 px-5 py-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-50 text-teal-600 ring-1 ring-teal-200/70">
               <Database className="h-4.5 w-4.5" />
             </div>
             <div>
@@ -282,35 +282,35 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
         </div>
 
         {/* Metrics Strip */}
-        <div className="grid grid-cols-2 gap-2.5 border-b border-slate-100 bg-slate-50/70 px-5 py-3 sm:grid-cols-4">
-          <div className="rounded-xl border border-slate-200/80 bg-white px-3 py-2">
+        <div className="grid grid-cols-2 gap-2.5 border-b border-teal-900/10 bg-teal-50/35 px-5 py-3 sm:grid-cols-4">
+          <div className="rounded-2xl border border-teal-900/10 bg-white/90 px-3 py-2">
             <div className="text-[11px] text-slate-500">覆盖官网企业</div>
             <div className="mt-0.5 tabular-nums text-base font-bold text-slate-900">{counts.companies} 家</div>
           </div>
-          <div className="rounded-xl border border-slate-200/80 bg-white px-3 py-2">
+          <div className="rounded-2xl border border-teal-900/10 bg-white/90 px-3 py-2">
             <div className="text-[11px] text-slate-500">当前在招/全部岗位</div>
             <div className="mt-0.5 tabular-nums text-base font-bold text-blue-600">
               {counts.openJobs} <span className="text-xs font-normal text-slate-400">/ {counts.jobs}</span>
             </div>
           </div>
-          <div className="rounded-xl border border-slate-200/80 bg-white px-3 py-2">
+          <div className="rounded-2xl border border-teal-900/10 bg-white/90 px-3 py-2">
             <div className="text-[11px] text-slate-500">10天内临近截止</div>
             <div className="mt-0.5 tabular-nums text-base font-bold text-amber-600">{counts.closingSoonJobs} 岗</div>
           </div>
-          <div className="rounded-xl border border-slate-200/80 bg-white px-3 py-2">
+          <div className="rounded-2xl border border-teal-900/10 bg-white/90 px-3 py-2">
             <div className="text-[11px] text-slate-500">已过截止自动下线</div>
             <div className="mt-0.5 tabular-nums text-base font-bold text-slate-600">{counts.closedJobs} 岗</div>
           </div>
         </div>
 
         {/* Sub Tabs */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
-          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100/80 p-1">
+        <div className="flex items-center justify-between border-b border-teal-900/10 px-5 py-2.5">
+          <div className="inline-flex rounded-2xl border border-teal-900/10 bg-teal-50/55 p-1">
             <button
               type="button"
               onClick={() => setActiveTab('sources')}
               className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                activeTab === 'sources' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                activeTab === 'sources' ? 'bg-white text-teal-800 shadow-xs' : 'text-[#4B6366] hover:text-teal-800'
               }`}
             >
               <Rss className="h-3.5 w-3.5" />
@@ -320,7 +320,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
               type="button"
               onClick={() => setActiveTab('import')}
               className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                activeTab === 'import' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                activeTab === 'import' ? 'bg-white text-teal-800 shadow-xs' : 'text-[#4B6366] hover:text-teal-800'
               }`}
             >
               <Upload className="h-3.5 w-3.5" />
@@ -333,7 +333,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
               type="button"
               disabled={Boolean(runningId)}
               onClick={() => handleRunSync(null)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+              className="fresh-btn-primary inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold disabled:opacity-60"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${runningId === 'all' ? 'animate-spin' : ''}`} />
               {runningId === 'all' ? '正在同步更新...' : '立即全量同步更新'}
@@ -344,7 +344,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
         {/* Body */}
         <div className="flex-1 space-y-4 overflow-y-auto p-5">
           {api.isStaticMode && (
-            <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50/70 px-3.5 py-2.5 text-xs text-blue-900">
+            <div className="flex items-start gap-2 rounded-2xl border border-sky-200/90 bg-sky-50/70 px-3.5 py-2.5 text-xs text-sky-900">
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
               <div>
                 <strong>GitHub Pages 免服务器静态模式：</strong>
@@ -373,7 +373,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                   <button
                     type="button"
                     onClick={() => setShowAddSource((v) => !v)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                    className="inline-flex items-center gap-1 rounded-xl border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700 hover:bg-teal-100"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     {showAddSource ? '收起表单' : '添加外部订阅源'}
@@ -384,7 +384,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
               {showAddSource && (
                 <form
                   onSubmit={handleAddSource}
-                  className="space-y-3 rounded-xl border border-blue-100 bg-blue-50/40 p-4"
+                  className="space-y-3 rounded-2xl border border-teal-200/75 bg-teal-50/45 p-4"
                 >
                   {(() => {
                     const quickList = (companies || [])
@@ -429,7 +429,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                         value={sourceForm.name}
                         onChange={(e) => setSourceForm({ ...sourceForm, name: e.target.value })}
                         placeholder="如：科大讯飞 · 北森招聘云 / 校招公告 RSS"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                        className="fresh-input w-full rounded-xl px-3 py-1.5 text-sm"
                       />
                     </div>
                     <div>
@@ -437,7 +437,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                       <select
                         value={sourceForm.sourceType}
                         onChange={(e) => setSourceForm({ ...sourceForm, sourceType: e.target.value })}
-                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                        className="fresh-input w-full rounded-xl px-2.5 py-1.5 text-sm"
                       >
                         <option value="ats_auto">ATS 智能识别 · 推荐</option>
                         <option value="beisen_zhiye">北森招聘云 (*.zhiye.com)</option>
@@ -463,7 +463,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                         value={sourceForm.url}
                         onChange={(e) => setSourceForm({ ...sourceForm, url: e.target.value })}
                         placeholder="https://..."
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-mono text-xs focus:border-blue-500 focus:outline-none"
+                        className="fresh-input w-full rounded-xl px-3 py-1.5 font-mono text-xs"
                       />
                       {/weixin\.qq\.com/i.test(sourceForm.url) && (
                         <div className="mt-1.5 flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900">
@@ -483,7 +483,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                       <select
                         value={sourceForm.defaultCompanyId}
                         onChange={(e) => setSourceForm({ ...sourceForm, defaultCompanyId: e.target.value })}
-                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
+                        className="fresh-input w-full rounded-xl px-2.5 py-1.5 text-xs"
                       >
                         <option value="">自动按标题/域名匹配</option>
                         {companies.map((c) => (
@@ -501,7 +501,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                     </span>
                     <button
                       type="submit"
-                      className="rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+                      className="fresh-btn-primary rounded-xl px-3.5 py-1.5 text-xs font-semibold"
                     >
                       保存订阅源
                     </button>
@@ -520,7 +520,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                     return (
                       <div
                         key={src.id}
-                        className="flex flex-col justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3.5 sm:flex-row sm:items-center"
+                        className="fresh-card fresh-card-hover flex flex-col justify-between gap-3 rounded-2xl p-3.5 sm:flex-row sm:items-center"
                       >
                         <div className="min-w-0 flex-1 space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
@@ -565,7 +565,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                             type="button"
                             disabled={Boolean(runningId)}
                             onClick={() => handleRunSync(src.id)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                            className="fresh-btn-secondary inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-medium disabled:opacity-50"
                           >
                             <RefreshCw className={`h-3 w-3 ${runningId === src.id ? 'animate-spin' : ''}`} />
                             同步
@@ -595,9 +595,9 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                     暂无手动或定时同步记录，点击右上角「立即全量同步更新」即可执行首次巡检。
                   </div>
                 ) : (
-                  <div className="overflow-hidden rounded-xl border border-slate-200">
+                  <div className="overflow-hidden rounded-2xl border border-teal-900/10">
                     <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50 text-[11px] text-slate-500">
+                      <thead className="bg-teal-50/45 text-[11px] text-[#4B6366]">
                         <tr>
                           <th className="px-3 py-2 font-medium">触发方式</th>
                           <th className="px-3 py-2 font-medium">结果统计</th>
@@ -686,7 +686,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                   if (previewItems.length > 0) setPreviewItems([]);
                 }}
                 placeholder="直接粘贴企业公众号文章中的招聘正文段落，例如：&#10;【某某公司2026-2027社招公告】&#10;1、资深财务审计经理 | 上海 | 3-5年 | 35-50K | https://careers.example.com"
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/30 p-3 font-mono text-xs text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none"
+                className="fresh-input w-full rounded-2xl p-3 font-mono text-xs text-[#132A2E]"
               />
 
               {previewWarning && (
@@ -697,7 +697,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
               )}
 
               {previewItems.length > 0 && (
-                <div className="space-y-2 rounded-xl border border-blue-200 bg-blue-50/30 p-3">
+                <div className="space-y-2 rounded-2xl border border-teal-200/80 bg-teal-50/45 p-3">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-slate-800">
                       解析预览列表（识别 {previewItems.length} 条，已勾选{' '}
@@ -715,7 +715,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                     {previewItems.map((item, idx) => (
                       <div
                         key={`${item.companyName}-${item.title}-${idx}`}
-                        className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2.5 text-xs sm:flex-row sm:items-center sm:justify-between"
+                        className="fresh-card flex flex-col gap-2 rounded-xl p-2.5 text-xs sm:flex-row sm:items-center sm:justify-between"
                       >
                         <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2">
                           <input
@@ -801,14 +801,14 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                     type="button"
                     disabled={previewing}
                     onClick={handlePreviewParse}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50/90 px-3.5 py-2 text-xs font-semibold text-sky-700 transition hover:bg-sky-100 disabled:opacity-60"
                   >
                     {previewing ? '解析中...' : '智能解析预览'}
                   </button>
                   <button
                     type="submit"
                     disabled={importing}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                    className="fresh-btn-primary inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold disabled:opacity-60"
                   >
                     <Upload className="h-3.5 w-3.5" />
                     {importing

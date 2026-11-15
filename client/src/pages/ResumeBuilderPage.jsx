@@ -289,7 +289,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
   }
 
   if (loading || !draft) {
-    return <div className="h-[72vh] animate-pulse rounded-2xl bg-slate-200/70" />;
+    return <div className="h-[72vh] animate-pulse rounded-3xl bg-teal-900/[0.06]" />;
   }
 
   const content = draft.content_json || {};
@@ -300,13 +300,13 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
   return (
     <div className="print-reset space-y-4">
       {/* Top Toolbar */}
-      <div className="no-print flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-xs">
+      <div className="no-print fresh-card flex flex-wrap items-center justify-between gap-3 rounded-3xl px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <FileText className="h-4 w-4 text-blue-600" />
           <select
             value={draft.id}
             onChange={(e) => handleSelectResume(e.target.value)}
-            className="max-w-[240px] rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:outline-none"
+            className="fresh-input max-w-[240px] rounded-xl px-2.5 py-1.5 text-sm font-semibold text-[#132A2E]"
           >
             {resumes.map((r) => (
               <option key={r.id} value={r.id}>
@@ -319,14 +319,14 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
           <button
             type="button"
             onClick={handleCreateBlank}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            className="fresh-btn-secondary inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-medium"
           >
             <Plus className="h-3.5 w-3.5" /> 新建
           </button>
           <button
             type="button"
             onClick={handleDuplicate}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            className="fresh-btn-secondary inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-medium"
             title="复制当前简历，针对不同公司微调岗位关键词"
           >
             <Copy className="h-3.5 w-3.5" /> 派生版本
@@ -343,7 +343,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
           <button
             type="button"
             onClick={handleExportJson}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            className="fresh-btn-secondary inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-medium"
             title="导出 JSON 备份"
           >
             <Download className="h-3.5 w-3.5" /> 备份
@@ -351,7 +351,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            className="fresh-btn-secondary inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-medium"
           >
             <Upload className="h-3.5 w-3.5" /> 导入
           </button>
@@ -373,7 +373,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
             type="button"
             onClick={() => handleSave(true)}
             disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60"
+            className="fresh-btn-secondary inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold disabled:opacity-60"
           >
             <Save className="h-3.5 w-3.5 text-blue-600" />
             {saving ? '保存中...' : '保存简历'}
@@ -381,7 +381,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
           <button
             type="button"
             onClick={handlePrintPdf}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-700"
+            className="fresh-btn-primary inline-flex items-center gap-1.5 rounded-xl px-4 py-1.5 text-xs font-semibold"
           >
             <Printer className="h-3.5 w-3.5" />
             导出高清 A4 PDF
@@ -394,7 +394,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
         {/* Left Editor Panel */}
         <div className="no-print space-y-3 xl:col-span-5">
           {/* Resume Version Title & Template Picker */}
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+          <section className="fresh-card rounded-3xl p-4">
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
                 <LayoutTemplate className="h-4 w-4 text-blue-600" />
@@ -409,7 +409,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
                 type="text"
                 value={draft.title}
                 onChange={(e) => updateDraft({ title: e.target.value })}
-                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-900 focus:border-blue-500 focus:outline-none"
+                className="fresh-input w-full rounded-xl px-3 py-1.5 text-sm font-medium text-[#132A2E]"
               />
             </div>
 
@@ -423,13 +423,13 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
                     onClick={() => updateDraft({ template_id: tpl.id })}
                     className={`rounded-xl border p-2.5 text-left transition ${
                       selected
-                        ? 'border-blue-600 bg-blue-50/70 ring-1 ring-blue-600'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
+                        ? 'border-teal-600 bg-teal-50/75 ring-1 ring-teal-600/50 shadow-xs'
+                        : 'border-teal-900/10 bg-white/85 hover:border-teal-300'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-1">
                       <span className="text-xs font-bold text-slate-900">{tpl.name}</span>
-                      <span className="rounded bg-white px-1.5 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-blue-100">
+                      <span className="rounded-md bg-white px-1.5 py-0.5 text-[10px] font-medium text-teal-700 ring-1 ring-teal-200/70">
                         {tpl.badge}
                       </span>
                     </div>
@@ -464,7 +464,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
                 <select
                   value={draft.font_scale}
                   onChange={(e) => updateDraft({ font_scale: e.target.value })}
-                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs"
+                  className="fresh-input w-full rounded-xl px-2 py-1 text-xs"
                 >
                   <option value="compact">紧凑 (装更多)</option>
                   <option value="standard">标准</option>
@@ -477,7 +477,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
                 <select
                   value={draft.margin_preset}
                   onChange={(e) => updateDraft({ margin_preset: e.target.value })}
-                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs"
+                  className="fresh-input w-full rounded-xl px-2 py-1 text-xs"
                 >
                   <option value="compact">窄边距</option>
                   <option value="standard">标准边距</option>
@@ -579,7 +579,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
             >
               <div className="space-y-3">
                 {(content.education || []).map((edu, idx) => (
-                  <div key={edu.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-xs">
+                  <div key={edu.id} className="fresh-subcard rounded-2xl p-3 text-xs">
                     <div className="mb-2 flex items-center justify-between">
                       <span className="font-semibold text-slate-700">学历 #{idx + 1}</span>
                       <button
@@ -679,7 +679,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
                       },
                     ])
                   }
-                  className="inline-flex items-center gap-1 rounded-lg border border-dashed border-blue-300 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                  className="inline-flex items-center gap-1 rounded-xl border border-dashed border-teal-300/90 px-3 py-1.5 text-xs font-medium text-teal-700 transition hover:bg-teal-50/70"
                 >
                   <Plus className="h-3.5 w-3.5" /> 添加一段教育经历
                 </button>
@@ -777,7 +777,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
                         )
                       }
                       placeholder="分类"
-                      className="w-24 shrink-0 rounded-lg border border-slate-200 px-2.5 py-1.5"
+                      className="fresh-input w-24 shrink-0 rounded-xl px-2.5 py-1.5"
                     />
                     <input
                       value={sk.items}
@@ -788,7 +788,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
                         )
                       }
                       placeholder="技能关键词描述"
-                      className="flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5"
+                      className="fresh-input flex-1 rounded-xl px-2.5 py-1.5"
                     />
                     <button
                       type="button"
@@ -809,7 +809,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
                   onClick={() =>
                     updateContent('skills', [...(content.skills || []), { id: makeId('sk'), label: '工具/语言', items: '' }])
                   }
-                  className="inline-flex items-center gap-1 rounded-lg border border-dashed border-blue-300 px-3 py-1.5 font-medium text-blue-600 hover:bg-blue-50"
+                  className="inline-flex items-center gap-1 rounded-xl border border-dashed border-teal-300/90 px-3 py-1.5 font-medium text-teal-700 transition hover:bg-teal-50/70"
                 >
                   <Plus className="h-3.5 w-3.5" /> 添加技能分类
                 </button>
@@ -835,7 +835,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
                           )
                         }
                         placeholder="奖项或证书名称"
-                        className="flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5"
+                        className="fresh-input flex-1 rounded-xl px-2.5 py-1.5"
                       />
                       <input
                         value={aw.date}
@@ -846,7 +846,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
                           )
                         }
                         placeholder="时间"
-                        className="w-24 rounded-lg border border-slate-200 px-2.5 py-1.5"
+                        className="fresh-input w-24 rounded-xl px-2.5 py-1.5"
                       />
                       <button
                         type="button"
@@ -867,7 +867,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
                     onClick={() =>
                       updateContent('awards', [...(content.awards || []), { id: makeId('aw'), title: '', date: '2026.05' }])
                     }
-                    className="inline-flex items-center gap-1 rounded-lg border border-dashed border-blue-300 px-3 py-1.5 font-medium text-blue-600 hover:bg-blue-50"
+                    className="inline-flex items-center gap-1 rounded-xl border border-dashed border-teal-300/90 px-3 py-1.5 font-medium text-teal-700 transition hover:bg-teal-50/70"
                   >
                     <Plus className="h-3.5 w-3.5" /> 添加荣誉/证书
                   </button>
@@ -880,7 +880,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
                     value={content.summary || ''}
                     onChange={(e) => updateContent('summary', e.target.value)}
                     placeholder="用 2-3 句话概括专业优势、核心经历与求职匹配度..."
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                    className="fresh-input w-full rounded-xl px-3 py-2 text-xs"
                   />
                 </div>
               </div>
@@ -891,7 +891,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
         {/* Right Live A4 Preview */}
         <div className="print-reset xl:col-span-7">
           {/* A4 Overflow Meter & Zoom Controls */}
-          <div className="no-print mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 shadow-xs">
+          <div className="no-print fresh-card mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-2.5">
             <div className="flex items-center gap-2.5">
               {isOverflow ? (
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
@@ -929,7 +929,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
               <select
                 value={zoom}
                 onChange={(e) => setZoom(Number(e.target.value))}
-                className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
+                className="fresh-input rounded-xl px-2 py-1 text-xs"
               >
                 <option value={0.58}>58%</option>
                 <option value={0.72}>72% (推荐)</option>
@@ -940,7 +940,7 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
           </div>
 
           {/* Scaled A4 Container */}
-          <div className="print-reset overflow-auto rounded-2xl border border-slate-200 bg-slate-200/70 p-4 sm:p-6">
+          <div className="print-reset fresh-paper-desk overflow-auto rounded-3xl border border-teal-900/10 p-4 sm:p-6">
             <div
               id="resume-print-wrapper"
               className="mx-auto origin-top"
@@ -980,16 +980,16 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
 
 function AccordionPanel({ title, isOpen, onToggle, children }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
+    <section className="fresh-card overflow-hidden rounded-3xl">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-slate-900 hover:bg-slate-50/70"
+        className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-[#132A2E] transition hover:bg-teal-50/45"
       >
         <span>{title}</span>
         {isOpen ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
       </button>
-      {isOpen && <div className="border-t border-slate-100 p-4">{children}</div>}
+      {isOpen && <div className="border-t border-teal-900/10 p-4">{children}</div>}
     </section>
   );
 }
@@ -1003,7 +1003,7 @@ function InputField({ label, value = '', onChange, placeholder = '' }) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-blue-500 focus:outline-none"
+        className="fresh-input w-full rounded-xl px-2.5 py-1.5 text-xs text-[#132A2E]"
       />
     </div>
   );
@@ -1050,7 +1050,7 @@ function ExperienceListEditor({
   return (
     <div className="space-y-3 text-xs">
       {items.map((item, idx) => (
-        <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+        <div key={item.id} className="fresh-subcard rounded-2xl p-3">
           <div className="mb-2 flex items-center justify-between">
             <span className="font-semibold text-slate-700">经历 #{idx + 1}</span>
             <button
@@ -1099,7 +1099,7 @@ function ExperienceListEditor({
             </div>
 
             {showStarTipsFor === item.id && (
-              <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-2 text-[11px] text-slate-700">
+              <div className="rounded-xl border border-teal-200/90 bg-teal-50/75 p-2.5 text-[11px] text-[#2E484D]">
                 <div className="mb-1 font-semibold text-blue-800">点击快捷插入高分动词或句式：</div>
                 <div className="mb-1.5 flex flex-wrap gap-1">
                   {STAR_ACTION_VERBS.map((v) => (
@@ -1107,7 +1107,7 @@ function ExperienceListEditor({
                       key={v}
                       type="button"
                       onClick={() => appendStarHelper(item.id, `${v}...`)}
-                      className="rounded bg-white px-1.5 py-0.5 text-blue-700 ring-1 ring-blue-200 hover:bg-blue-100"
+                      className="rounded-md bg-white px-1.5 py-0.5 text-teal-700 ring-1 ring-teal-200 hover:bg-teal-100"
                     >
                       + {v}
                     </button>
@@ -1135,7 +1135,7 @@ function ExperienceListEditor({
                   value={b}
                   onChange={(e) => updateBullet(item.id, bIdx, e.target.value)}
                   placeholder="例如：负责核心模块研发，通过引入缓存策略将响应耗时降低 65%..."
-                  className="flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs"
+                  className="fresh-input flex-1 rounded-xl px-2.5 py-1.5 text-xs"
                 />
                 <button
                   type="button"
@@ -1163,7 +1163,7 @@ function ExperienceListEditor({
       <button
         type="button"
         onClick={() => onChange([...items, { ...emptyTemplate, id: makeId('exp') }])}
-        className="inline-flex items-center gap-1 rounded-lg border border-dashed border-blue-300 px-3 py-1.5 font-medium text-blue-600 hover:bg-blue-50"
+        className="inline-flex items-center gap-1 rounded-xl border border-dashed border-teal-300/90 px-3 py-1.5 font-medium text-teal-700 transition hover:bg-teal-50/70"
       >
         <Plus className="h-3.5 w-3.5" /> 添加一段经历
       </button>

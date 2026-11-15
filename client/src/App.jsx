@@ -100,26 +100,26 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen text-[#132A2E]">
       {/* Top Navigation */}
-      <header className="no-print sticky top-0 z-40 border-b border-slate-200/90 bg-white/95 backdrop-blur-md">
+      <header className="no-print sticky top-0 z-40 border-b border-teal-900/[0.07] bg-white/75 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
           <button
             type="button"
             onClick={() => setActiveTab('dashboard')}
             className="flex items-center gap-2.5 text-left"
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-xs">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white shadow-[0_6px_14px_-4px_rgba(13,148,136,0.45)]">
               <Compass className="h-5 w-5" />
             </span>
             <div>
-              <div className="text-sm font-bold tracking-tight text-slate-900">职航 · 全景官方直聘助手</div>
+              <div className="text-sm font-bold tracking-tight text-[#132A2E]">职航 · 全景官方直聘助手</div>
               <div className="text-[11px] text-slate-500">校招 / 社招 / 实习全品类 · 公众号公告解析 · 简历工坊</div>
             </div>
           </button>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            <nav className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-200/80 bg-slate-100/70 p-1">
+            <nav className="flex flex-wrap items-center gap-1 rounded-2xl border border-teal-900/[0.07] bg-teal-50/55 p-1">
               {TABS.map((tab) => {
                 const Icon = tab.icon;
                 const active = activeTab === tab.id;
@@ -128,10 +128,10 @@ export default function App() {
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
-                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition sm:text-sm ${
+                    className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition sm:text-sm ${
                       active
-                        ? 'bg-white text-blue-600 shadow-xs'
-                        : 'text-slate-600 hover:bg-white/60 hover:text-slate-900'
+                        ? 'bg-white text-teal-700 shadow-[0_2px_8px_-2px_rgba(13,148,136,0.18)]'
+                        : 'text-slate-600 hover:bg-white/65 hover:text-teal-800'
                     }`}
                   >
                     <Icon className="h-4 w-4" />
@@ -142,14 +142,14 @@ export default function App() {
             </nav>
 
             {api.isStaticMode && (
-              <div className="flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50/70 px-2 py-1 text-[11px] text-emerald-800">
-                <HardDrive className="h-3.5 w-3.5 text-emerald-600" />
+              <div className="flex items-center gap-1 rounded-2xl border border-teal-200/80 bg-teal-50/65 px-2.5 py-1 text-[11px] text-teal-900">
+                <HardDrive className="h-3.5 w-3.5 text-teal-600" />
                 <span className="hidden font-medium lg:inline">浏览器本地隐私存储</span>
                 <button
                   type="button"
                   onClick={handleExportBackup}
                   title="导出个人简历与投递记录 JSON 备份"
-                  className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 font-medium text-slate-700 shadow-2xs hover:bg-slate-50"
+                  className="inline-flex items-center gap-1 rounded-lg bg-white/90 px-2 py-1 font-medium text-slate-700 shadow-2xs hover:bg-white"
                 >
                   <Download className="h-3 w-3" />
                   备份
@@ -158,7 +158,7 @@ export default function App() {
                   type="button"
                   onClick={() => backupInputRef.current?.click()}
                   title="从 JSON 备份恢复数据"
-                  className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 font-medium text-slate-700 shadow-2xs hover:bg-slate-50"
+                  className="inline-flex items-center gap-1 rounded-lg bg-white/90 px-2 py-1 font-medium text-slate-700 shadow-2xs hover:bg-white"
                 >
                   <Upload className="h-3 w-3" />
                   恢复
