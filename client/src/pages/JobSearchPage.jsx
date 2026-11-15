@@ -55,6 +55,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
 
   const [verifyingId, setVerifyingId] = useState(null);
   const [batchVerifying, setBatchVerifying] = useState(false);
+  const [updatingJobs, setUpdatingJobs] = useState(false);
   const [verifyFeedbackMap, setVerifyFeedbackMap] = useState({});
 
   const [syncModalOpen, setSyncModalOpen] = useState(false);
@@ -194,6 +195,24 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
     }
   }
 
+  async function handleQuickUpdateJobs() {
+    setUpdatingJobs(true);
+    try {
+      const res = await api.runSync({});
+      await Promise.all([loadJobs(), loadCompanies(), loadSyncSummary()]);
+      const summaryParts = [];
+      if (res.addedCount > 0) summaryParts.push(`新增 ${res.addedCount} 条`);
+      if (res.updatedCount > 0) summaryParts.push(`更新/预警 ${res.updatedCount} 条`);
+      if (res.expiredCount > 0) summaryParts.push(`下线过期 ${res.expiredCount} 条`);
+      const detail = summaryParts.length > 0 ? summaryParts.join('，') : '已完成最新目录与截止时间巡检';
+      onToast('success', `招聘信息已更新：${detail}（共 ${res.counts?.openJobs ?? jobs.length} 个在招岗）。`);
+    } catch (err) {
+      onToast('error', `更新失败：${err.message}`);
+    } finally {
+      setUpdatingJobs(false);
+    }
+  }
+
   async function handleCreateJob(e) {
     e.preventDefault();
     try {
@@ -312,6 +331,16 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                   className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 pr-4 pl-10 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none"
                 />
               </div>
+
+              <button
+                type="button"
+                onClick={handleQuickUpdateJobs}
+                disabled={updatingJobs}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-60"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${updatingJobs ? 'animate-spin' : ''}`} />
+                {updatingJobs ? '正在更新...' : '更新招聘信息'}
+              </button>
 
               <button
                 type="button"

@@ -20,11 +20,12 @@ const NEW_FIRST_TIER = new Set([
 
 let catalogPromise = null;
 
-async function fetchStaticCatalog() {
-  if (!catalogPromise) {
+async function fetchStaticCatalog(forceRefresh = false) {
+  if (!catalogPromise || forceRefresh) {
     const base = import.meta.env.BASE_URL || '/';
     const normalizedBase = base.endsWith('/') ? base : `${base}/`;
-    catalogPromise = fetch(`${normalizedBase}catalog.json`).then(async (res) => {
+    const url = forceRefresh ? `${normalizedBase}catalog.json?t=${Date.now()}` : `${normalizedBase}catalog.json`;
+    catalogPromise = fetch(url, forceRefresh ? { cache: 'no-store' } : undefined).then(async (res) => {
       if (!res.ok) {
         throw new Error(`无法加载内置校招数据集 (${res.status})`);
       }
@@ -958,6 +959,7 @@ export const localEngine = {
   },
 
   async runSync({ sourceId = null } = {}) {
+    await fetchStaticCatalog(true);
     const { catalog, state, jobs } = await getHydratedContext();
     const statusBefore = await this.getSyncStatus();
     const targetSources = sourceId
