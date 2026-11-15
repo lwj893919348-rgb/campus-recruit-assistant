@@ -8,10 +8,6 @@ import {
   Save,
   ChevronDown,
   ChevronUp,
-  Eye,
-  EyeOff,
-  ArrowUp,
-  ArrowDown,
   Sparkles,
   Download,
   Upload,
@@ -22,6 +18,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client.js';
 import { ResumeSheet } from '../components/ResumeSheet.jsx';
+import { SectionOrderControl } from '../components/SectionOrderControl.jsx';
 import {
   RESUME_TEMPLATES,
   RESUME_THEME_COLORS,
@@ -290,12 +287,8 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
     window.print();
   }
 
-  function moveSection(index, direction) {
-    const list = [...(draft.section_order || [])];
-    const targetIdx = index + direction;
-    if (targetIdx < 0 || targetIdx >= list.length) return;
-    [list[index], list[targetIdx]] = [list[targetIdx], list[index]];
-    updateDraft({ section_order: list });
+  function handleSectionReorder(nextOrder) {
+    updateDraft({ section_order: nextOrder });
   }
 
   function toggleSectionHidden(key) {
@@ -515,51 +508,13 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
             </div>
 
             {/* Section Order & Visibility */}
-            <div className="mt-3 border-t border-slate-100 pt-3">
-              <div className="mb-1.5 text-[11px] font-medium text-slate-500">模块顺序与显隐控制</div>
-              <div className="flex flex-wrap gap-1.5">
-                {(draft.section_order || []).map((secKey, idx) => {
-                  const isHidden = (draft.hidden_sections || []).includes(secKey);
-                  return (
-                    <div
-                      key={secKey}
-                      className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${
-                        isHidden
-                          ? 'border-slate-200 bg-slate-100 text-slate-400'
-                          : 'border-slate-200 bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => toggleSectionHidden(secKey)}
-                        title={isHidden ? '点击显示该模块' : '点击隐藏该模块'}
-                      >
-                        {isHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3 text-blue-600" />}
-                      </button>
-                      <span className={isHidden ? 'line-through' : 'font-medium'}>
-                        {RESUME_SECTION_LABELS[secKey]}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={idx === 0}
-                        onClick={() => moveSection(idx, -1)}
-                        className="hover:text-blue-600 disabled:opacity-30"
-                      >
-                        <ArrowUp className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={idx === draft.section_order.length - 1}
-                        onClick={() => moveSection(idx, 1)}
-                        className="hover:text-blue-600 disabled:opacity-30"
-                      >
-                        <ArrowDown className="h-3 w-3" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <SectionOrderControl
+              sectionOrder={draft.section_order || []}
+              hiddenSections={draft.hidden_sections || []}
+              sectionLabels={RESUME_SECTION_LABELS}
+              onReorder={handleSectionReorder}
+              onToggleHidden={toggleSectionHidden}
+            />
           </section>
 
           {/* Accordion Editors */}
