@@ -1,4 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { getCompanyAtsSupport } from '../../../shared/atsPlatforms.js';
 import { resolveJobOfficialTarget } from '../../../shared/jobLinkResolver.js';
 import {
@@ -20,6 +21,7 @@ import {
   Check,
   Briefcase,
   MessageSquareText,
+  ArrowUp,
 } from 'lucide-react';
 import { api } from '../api/client.js';
 import SyncCenterModal from '../components/SyncCenterModal.jsx';
@@ -132,6 +134,7 @@ export const JobSearchPage = memo(function JobSearchPage({
   const [filtering, setFiltering] = useState(false);
   const [visibleJobCount, setVisibleJobCount] = useState(JOBS_PAGE_SIZE);
   const [visibleCompanyCount, setVisibleCompanyCount] = useState(COMPANIES_PAGE_SIZE);
+  const [showBackToTop, setShowBackToTop] = useState(false);
 
   const hasLoadedJobsRef = useRef(false);
   const prevQRef = useRef(q);
@@ -274,6 +277,28 @@ export const JobSearchPage = memo(function JobSearchPage({
       loadSyncSummary();
     }
   }, [refreshSignal, isActive, loadJobs, loadCompanies, loadSyncSummary]);
+
+  useEffect(() => {
+    if (!isActive) {
+      setShowBackToTop(false);
+      return undefined;
+    }
+    const updateScrollFlag = () => {
+      const next = window.scrollY > 240;
+      setShowBackToTop((prev) => (prev === next ? prev : next));
+    };
+    updateScrollFlag();
+    const rafId = requestAnimationFrame(updateScrollFlag);
+    window.addEventListener('scroll', updateScrollFlag, { passive: true });
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('scroll', updateScrollFlag);
+    };
+  }, [isActive]);
+
+  const scrollToTop = useCallback(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   function toggleCity(cityName) {
     setSelectedCities((prev) =>
@@ -1147,6 +1172,24 @@ export const JobSearchPage = memo(function JobSearchPage({
                   </button>
                 </div>
               )}
+
+              {jobs.length > 0 && (
+                <div className="flex justify-center pt-2 pb-1">
+                  <button
+                    type="button"
+                    data-testid="jobs-bottom-back-to-top"
+                    onClick={scrollToTop}
+                    aria-label="返回顶部"
+                    title="点击直达顶部"
+                    className="fresh-card fresh-card-hover inline-flex items-center gap-2 rounded-full border border-teal-200/80 px-4 py-2 text-xs font-semibold text-teal-800 hover:border-teal-400 hover:bg-teal-50/90"
+                  >
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-emerald-600 text-white shadow-xs">
+                      <ArrowUp className="h-3.5 w-3.5 stroke-[2.25]" />
+                    </span>
+                    <span>回到顶部</span>
+                  </button>
+                </div>
+              )}
             </>
           )}
         </>
@@ -1970,6 +2013,23 @@ export const JobSearchPage = memo(function JobSearchPage({
         onToast={onToast}
         companies={companies}
       />
+
+      {isActive &&
+        showBackToTop &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <button
+            type="button"
+            data-testid="jobs-floating-back-to-top"
+            onClick={scrollToTop}
+            aria-label="直达顶部"
+            title="点击直达顶部"
+            className="no-print fixed right-6 bottom-6 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full border border-teal-200/90 bg-white/95 text-teal-700 shadow-[0_10px_28px_-6px_rgba(13,148,136,0.38)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-teal-500 hover:bg-teal-600 hover:text-white active:scale-95"
+          >
+            <ArrowUp className="h-5 w-5 stroke-[2.25]" />
+          </button>,
+          document.body,
+        )}
     </div>
   );
 });
