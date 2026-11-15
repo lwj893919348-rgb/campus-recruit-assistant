@@ -35,6 +35,10 @@ import {
   resolveJobOfficialTarget,
 } from '../../shared/jobLinkResolver.js';
 import {
+  inferCityInfo,
+  normalizeJobLocation,
+} from '../../shared/jobParser.js';
+import {
   ALL_JOB_CATEGORIES,
   parseWechatAnnouncementText,
 } from '../../shared/jobParser.js';
@@ -1301,6 +1305,58 @@ test('GET /api/jobs?onlyExactDetail=1 and POST /api/sync/sources/subscribe-all-a
     const bulkAgain = await invokeApp(app, 'POST', '/api/sync/sources/subscribe-all-ats');
     assert.equal(bulkAgain.status, 200);
     assert.equal(bulkAgain.data.createdCount, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('City normalization and facets.cities deduplicate Fuzhou and administrative suffixes', async () => {
+  assert.deepEqual(inferCityInfo('烟台市-福山区'), { city: '烟台', province: '山东', tier: '省会及重点城市' });
+  assert.deepEqual(inferCityInfo('烟台市'), { city: '烟台', province: '山东', tier: '省会及重点城市' });
+  assert.deepEqual(inferCityInfo('福州市'), { city: '福州', province: '福建', tier: '新一线' });
+  assert.deepEqual(inferCityInfo('福建省-福州市'), { city: '福州', province: '福建', tier: '新一线' });
+  assert.deepEqual(inferCityInfo('楚雄彝族自治州-禄丰县'), { city: '楚雄', province: '云南', tier: '省会及重点城市' });
+  assert.deepEqual(inferCityInfo('鄂尔多斯市-伊金霍洛旗'), { city: '鄂尔多斯', province: '内蒙古', tier: '省会及重点城市' });
+  assert.deepEqual(normalizeJobLocation('芜湖市', '芜湖市'), { city: '芜湖', province: '安徽', city_tier: '省会及重点城市' });
+
+  const db = createDatabase(':memory:', { seed: true });
+  try {
+    // Inject legacy dirty rows with drifted city_tier and district suffixes
+    db.prepare(
+      `INSERT INTO jobs (id, company_id, title, category, season_tag, graduation_years, province, city, city_tier, official_source_url, official_domain, deadline, status, requirements_summary, sync_source, created_at)
+       VALUES (?, 'tencent', ?, '技术研发', '2027届秋招', '["2027"]', ?, ?, ?, 'https://join.qq.com/city-test', 'qq.com', '2027-06-01', 'open', 'test', 'user_submitted', '2026-11-15T00:00:00Z')`,
+    ).run('legacy-fz-drift', '福州旧tier测试岗', '福建', '福州', '省会及重点城市');
+    db.prepare(
+      `INSERT INTO jobs (id, company_id, title, category, season_tag, graduation_years, province, city, city_tier, official_source_url, official_domain, deadline, status, requirements_summary, sync_source, created_at)
+       VALUES (?, 'wanhua', ?, '新能源化工', '2027届秋招', '["2027"]', ?, ?, ?, 'https://whchem.hotjob.cn/city-test', 'hotjob.cn', '2027-06-01', 'open', 'test', 'user_submitted', '2026-11-15T00:00:00Z')`,
+    ).run('legacy-yt-district', '烟台福山区旧后缀测试岗', '烟台市-福山区', '烟台市-福山区', '省会及重点城市');
+
+    // Re-running upsertBuiltInCatalog heals legacy rows automatically
+    upsertBuiltInCatalog(db);
+    const healedFz = db.prepare('SELECT city, province, city_tier FROM jobs WHERE id = ?').get('legacy-fz-drift');
+    assert.deepEqual({ ...healedFz }, { city: '福州', province: '福建', city_tier: '新一线' });
+    const healedYt = db.prepare('SELECT city, province, city_tier FROM jobs WHERE id = ?').get('legacy-yt-district');
+    assert.deepEqual({ ...healedYt }, { city: '烟台', province: '山东', city_tier: '省会及重点城市' });
+
+    const app = createApp(db);
+    // POST /api/jobs should normalize incoming '烟台市-福山区' too
+    const postRes = await invokeApp(app, 'POST', '/api/jobs', {
+      companyName: '万华化学',
+      title: '新材料工艺工程师',
+      city: '烟台市-福山区',
+      officialUrl: 'https://whchem.hotjob.cn/SU123/pb/posDetail.html?postId=yt-999',
+    });
+    assert.equal(postRes.status, 201);
+    assert.equal(postRes.data.city, '烟台');
+    assert.equal(postRes.data.province, '山东');
+
+    const jobsRes = await invokeApp(app, 'GET', '/api/jobs');
+    assert.equal(jobsRes.status, 200);
+    const cityNames = jobsRes.data.facets.cities.map((c) => c.city);
+    assert.equal(new Set(cityNames).size, cityNames.length);
+    assert.equal(jobsRes.data.facets.cities.filter((c) => c.city === '福州').length, 1);
+    assert.equal(jobsRes.data.facets.cities.find((c) => c.city === '福州').city_tier, '新一线');
+    assert.equal(jobsRes.data.facets.cities.filter((c) => c.city.startsWith('烟台')).length, 1);
   } finally {
     db.close();
   }

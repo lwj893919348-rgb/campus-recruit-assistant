@@ -2,6 +2,7 @@ import {
   inferCategory,
   inferCityInfo,
   inferRecruitTypeAndExp,
+  normalizeJobLocation,
   parseBatchImportText,
 } from '../../../shared/jobParser.js';
 import {
@@ -25,11 +26,6 @@ const STATUS_LABELS = {
 };
 
 const MULTI_PART_TLDS = ['com.cn', 'net.cn', 'org.cn', 'gov.cn', 'edu.cn', 'co.uk', 'co.jp', 'com.hk', 'com.sg'];
-
-const FIRST_TIER = new Set(['北京', '上海', '深圳', '广州']);
-const NEW_FIRST_TIER = new Set([
-  '杭州', '成都', '南京', '武汉', '西安', '苏州', '长沙', '重庆', '合肥', '天津', '郑州', '东莞', '佛山', '青岛', '宁波', '沈阳', '无锡', '昆明', '福州',
-]);
 
 let catalogPromise = null;
 
@@ -254,7 +250,7 @@ function resolveOrCreateLocalCompany({ state, companies, payload, parsedUrl, roo
 }
 
 function buildLocalJobRecord(company, payload, parsedUrl, rootDomain, now) {
-  const cleanCity = String(payload.city || '').trim();
+  const loc = normalizeJobLocation(payload.city, payload.province);
   const title = String(payload.title || '').trim();
   const meta = inferRecruitTypeAndExp({
     title,
@@ -272,9 +268,9 @@ function buildLocalJobRecord(company, payload, parsedUrl, rootDomain, now) {
     category: String(payload.category || '').trim() || inferCategory(title),
     season_tag: meta.seasonTag,
     graduation_years: meta.graduationYears,
-    province: String(payload.province || '').trim() || cleanCity,
-    city: cleanCity,
-    city_tier: inferCityTier(cleanCity),
+    province: loc.province,
+    city: loc.city,
+    city_tier: loc.city_tier,
     official_source_url: parsedUrl.href,
     official_domain: rootDomain,
     deadline: String(payload.deadline || '').trim() || '招满即止',
@@ -302,13 +298,6 @@ function isPrivateOrLoopbackHost(hostname = '') {
     if (second >= 16 && second <= 31) return true;
   }
   return false;
-}
-
-function inferCityTier(city = '') {
-  if (FIRST_TIER.has(city)) return '一线城市';
-  if (NEW_FIRST_TIER.has(city)) return '新一线';
-  if (['全国多地', '海外', '远程'].includes(city)) return '其他/海外';
-  return '省会及重点城市';
 }
 
 function computeDeadlineStatus(job) {
@@ -374,16 +363,20 @@ async function getHydratedContext() {
   for (const c of state.userCompanies) companyMap.set(c.id, { ...c });
   const companies = Array.from(companyMap.values());
 
+  const normalizeLocalJob = (rawJob) => ({
+    ...rawJob,
+    ...normalizeJobLocation(rawJob.city, rawJob.province),
+    status: computeDeadlineStatus(rawJob),
+  });
+
   const jobMap = new Map();
   for (const j of catalog.jobs || []) {
     const ov = state.jobOverrides[j.id];
-    const merged = ov ? { ...j, ...ov } : { ...j };
-    merged.status = computeDeadlineStatus(merged);
+    const merged = normalizeLocalJob(ov ? { ...j, ...ov } : j);
     jobMap.set(j.id, merged);
   }
   for (const j of state.userJobs) {
-    const merged = { ...j };
-    merged.status = computeDeadlineStatus(merged);
+    const merged = normalizeLocalJob(j);
     jobMap.set(j.id, merged);
   }
   const jobs = Array.from(jobMap.values());
@@ -568,7 +561,7 @@ export const localEngine = {
 
     const cityCountMap = new Map();
     for (const j of openJobs) {
-      const key = `${j.city}::${j.city_tier}`;
+      const key = j.city;
       if (!cityCountMap.has(key)) {
         cityCountMap.set(key, { city: j.city, city_tier: j.city_tier, count: 0 });
       }
@@ -728,7 +721,7 @@ export const localEngine = {
     let exactDetailCount = 0;
 
     for (const j of enrichedAll) {
-      const ck = `${j.city}::${j.province}::${j.city_tier}`;
+      const ck = j.city;
       if (!cityFacetMap.has(ck)) {
         cityFacetMap.set(ck, { city: j.city, province: j.province, city_tier: j.city_tier, count: 0 });
       }
@@ -1651,6 +1644,8 @@ export const localEngine = {
           recruit_type: meta.recruitType,
           experience_req: meta.experienceReq,
           city: cityInfo.city || state.userJobs[dupUserIdx].city,
+          province: cityInfo.province || state.userJobs[dupUserIdx].province,
+          city_tier: cityInfo.tier || state.userJobs[dupUserIdx].city_tier,
           deadline: item.deadline || state.userJobs[dupUserIdx].deadline,
           last_checked_at: now,
         };

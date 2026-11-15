@@ -1,3 +1,5 @@
+import { inferCityTier } from '../../shared/jobParser.js';
+
 export const CATALOG_UPDATED_AT = '2026-11-15T14:00:00.000Z';
 
 const RAW_OFFICIAL_COMPANIES = [
@@ -3069,18 +3071,6 @@ export const OFFICIAL_COMPANIES = RAW_OFFICIAL_COMPANIES.map((c) => {
   };
 });
 
-// City tier helper used for building jobs uniformly
-const TIER_1 = new Set(['北京', '上海', '深圳', '广州']);
-const NEW_TIER_1 = new Set(['杭州', '成都', '南京', '武汉', '西安', '苏州', '长沙', '重庆', '合肥', '宁波', '青岛', '天津', '郑州', '东莞', '佛山', '沈阳', '无锡', '昆明', '福州']);
-const OVERSEAS_OR_MULTI = new Set(['全国多地', '海外', '远程']);
-
-function tierFor(city) {
-  if (TIER_1.has(city)) return '一线城市';
-  if (NEW_TIER_1.has(city)) return '新一线';
-  if (OVERSEAS_OR_MULTI.has(city)) return '其他/海外';
-  return '省会及重点城市';
-}
-
 const COMP_MAP = Object.fromEntries(OFFICIAL_COMPANIES.map((c) => [c.id, c]));
 
 function matchesOfficialDomain(rawUrl, officialDomain) {
@@ -3149,7 +3139,7 @@ function j({
     graduation_years: resolvedYears,
     province,
     city,
-    city_tier: tierFor(city),
+    city_tier: inferCityTier(city),
     official_source_url: resolvedSourceUrl,
     official_domain: c.official_domain,
     deadline,

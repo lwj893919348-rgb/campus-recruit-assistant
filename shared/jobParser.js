@@ -55,49 +55,175 @@ export const CITY_PROVINCE_MAP = {
   郑州: { province: '河南', tier: '新一线' },
   东莞: { province: '广东', tier: '新一线' },
   佛山: { province: '广东', tier: '新一线' },
+  无锡: { province: '江苏', tier: '新一线' },
+  福州: { province: '福建', tier: '新一线' },
+  沈阳: { province: '辽宁', tier: '新一线' },
+  昆明: { province: '云南', tier: '新一线' },
   珠海: { province: '广东', tier: '省会及重点城市' },
   厦门: { province: '福建', tier: '省会及重点城市' },
   宁德: { province: '福建', tier: '省会及重点城市' },
+  泉州: { province: '福建', tier: '省会及重点城市' },
   济南: { province: '山东', tier: '省会及重点城市' },
-  无锡: { province: '江苏', tier: '省会及重点城市' },
-  福州: { province: '福建', tier: '省会及重点城市' },
-  沈阳: { province: '辽宁', tier: '省会及重点城市' },
+  烟台: { province: '山东', tier: '省会及重点城市' },
+  潍坊: { province: '山东', tier: '省会及重点城市' },
   大连: { province: '辽宁', tier: '省会及重点城市' },
   长春: { province: '吉林', tier: '省会及重点城市' },
   哈尔滨: { province: '黑龙江', tier: '省会及重点城市' },
-  昆明: { province: '云南', tier: '省会及重点城市' },
   南宁: { province: '广西', tier: '省会及重点城市' },
   石家庄: { province: '河北', tier: '省会及重点城市' },
   太原: { province: '山西', tier: '省会及重点城市' },
   南昌: { province: '江西', tier: '省会及重点城市' },
+  上饶: { province: '江西', tier: '省会及重点城市' },
   贵阳: { province: '贵州', tier: '省会及重点城市' },
   海口: { province: '海南', tier: '省会及重点城市' },
   常州: { province: '江苏', tier: '省会及重点城市' },
+  泰州: { province: '江苏', tier: '省会及重点城市' },
+  徐州: { province: '江苏', tier: '省会及重点城市' },
+  丹阳: { province: '江苏', tier: '省会及重点城市' },
+  连云港: { province: '江苏', tier: '省会及重点城市' },
+  南通: { province: '江苏', tier: '省会及重点城市' },
+  扬州: { province: '江苏', tier: '省会及重点城市' },
+  镇江: { province: '江苏', tier: '省会及重点城市' },
   温州: { province: '浙江', tier: '省会及重点城市' },
   嘉兴: { province: '浙江', tier: '省会及重点城市' },
+  绍兴: { province: '浙江', tier: '省会及重点城市' },
+  台州: { province: '浙江', tier: '省会及重点城市' },
+  金华: { province: '浙江', tier: '省会及重点城市' },
+  湖州: { province: '浙江', tier: '省会及重点城市' },
+  芜湖: { province: '安徽', tier: '省会及重点城市' },
+  惠州: { province: '广东', tier: '省会及重点城市' },
+  潮州: { province: '广东', tier: '省会及重点城市' },
+  中山: { province: '广东', tier: '省会及重点城市' },
+  宜昌: { province: '湖北', tier: '省会及重点城市' },
+  呼和浩特: { province: '内蒙古', tier: '省会及重点城市' },
+  鄂尔多斯: { province: '内蒙古', tier: '省会及重点城市' },
+  包头: { province: '内蒙古', tier: '省会及重点城市' },
+  南阳: { province: '河南', tier: '省会及重点城市' },
+  洛阳: { province: '河南', tier: '省会及重点城市' },
+  株洲: { province: '湖南', tier: '省会及重点城市' },
+  保山: { province: '云南', tier: '省会及重点城市' },
+  楚雄: { province: '云南', tier: '省会及重点城市' },
+  安康: { province: '陕西', tier: '省会及重点城市' },
+  眉山: { province: '四川', tier: '省会及重点城市' },
+  绵阳: { province: '四川', tier: '省会及重点城市' },
+  宜宾: { province: '四川', tier: '省会及重点城市' },
+  兰州: { province: '甘肃', tier: '省会及重点城市' },
+  银川: { province: '宁夏', tier: '省会及重点城市' },
+  西宁: { province: '青海', tier: '省会及重点城市' },
+  乌鲁木齐: { province: '新疆', tier: '省会及重点城市' },
+  拉萨: { province: '西藏', tier: '省会及重点城市' },
   香港: { province: '香港', tier: '其他/海外' },
+  澳门: { province: '澳门', tier: '其他/海外' },
+  台湾: { province: '台湾', tier: '其他/海外' },
+  越南: { province: '海外', tier: '其他/海外' },
+  新加坡: { province: '海外', tier: '其他/海外' },
+  日本: { province: '海外', tier: '其他/海外' },
+  美国: { province: '海外', tier: '其他/海外' },
+  德国: { province: '海外', tier: '其他/海外' },
+  泰国: { province: '海外', tier: '其他/海外' },
+  马来西亚: { province: '海外', tier: '其他/海外' },
+  印度尼西亚: { province: '海外', tier: '其他/海外' },
   全国多地: { province: '全国多地', tier: '其他/海外' },
   海外: { province: '海外', tier: '其他/海外' },
   远程: { province: '远程', tier: '其他/海外' },
 };
 
 export const KNOWN_CITY_NAMES = Object.keys(CITY_PROVINCE_MAP);
+const KNOWN_CITY_NAMES_BY_LENGTH = [...KNOWN_CITY_NAMES].sort((a, b) => b.length - a.length);
 
-export function inferCityInfo(cityInput = '', fallbackText = '') {
-  const clean = String(cityInput || '').trim();
-  if (clean && CITY_PROVINCE_MAP[clean]) {
-    return { city: clean, ...CITY_PROVINCE_MAP[clean] };
+const ADMIN_SUFFIX_RE = /(?:特别行政区|(?:彝族|藏族|蒙古族|土家族|苗族|布依族|回族|朝鲜族|哈萨克|白族|傣族|壮族|侗族|哈尼族|羌族|傈僳族|佤族|纳西族|景颇族|柯尔克孜|土族|锡伯|塔吉克|裕固|毛南|仡佬)*自治[州县区]|地区|盟)$/;
+const VAGUE_CITY_RE = /^(?:全国|全国各地|不限|不限城市|多地|其他|未知|暂无|-+)$/i;
+
+function stripCityAdminSuffix(token = '') {
+  let t = String(token || '').trim();
+  if (!t) return '';
+  if (CITY_PROVINCE_MAP[t]) return t;
+  t = t.replace(ADMIN_SUFFIX_RE, '');
+  if (t.length > 2 && /[市县]$/.test(t) && !/全国多地|城市/.test(t)) {
+    t = t.slice(0, -1);
   }
-  const combined = `${clean} ${fallbackText}`;
-  for (const cityName of KNOWN_CITY_NAMES) {
-    if (combined.includes(cityName)) {
-      return { city: cityName, ...CITY_PROVINCE_MAP[cityName] };
+  return t.trim();
+}
+
+export function normalizeCityToken(cityInput = '') {
+  const raw = String(cityInput || '').trim();
+  if (!raw) return '';
+  if (CITY_PROVINCE_MAP[raw]) return raw;
+  if (VAGUE_CITY_RE.test(raw)) return '全国多地';
+  if (/^(?:国外|海外多地|全球)$/i.test(raw)) return '海外';
+
+  const withoutCountry = raw.replace(/^(?:中华人民共和国|中国)[\s·\-_/]+/, '').trim();
+  const parts = withoutCountry
+    .split(/[-/·,，、;；|\s]+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) return '';
+
+  // Skip leading province segment for strings formatted as '福建省-福州市' or '山东省-烟台市-福山区'
+  let primaryIdx = 0;
+  if (parts.length > 1 && /省$/.test(parts[0])) {
+    primaryIdx = 1;
+  }
+
+  const orderedParts = [parts[primaryIdx], ...parts.filter((_, idx) => idx !== primaryIdx)];
+  for (const part of orderedParts) {
+    const stripped = stripCityAdminSuffix(part);
+    if (CITY_PROVINCE_MAP[stripped]) return stripped;
+  }
+
+  const primaryStripped = stripCityAdminSuffix(parts[primaryIdx]);
+  for (const known of KNOWN_CITY_NAMES_BY_LENGTH) {
+    if (known !== '全国多地' && (primaryStripped.includes(known) || withoutCountry.includes(known))) {
+      return known;
     }
   }
-  if (clean) {
-    return { city: clean, province: clean, tier: '省会及重点城市' };
+  return primaryStripped || withoutCountry;
+}
+
+export function inferCityInfo(cityInput = '', fallbackText = '') {
+  const cleanRaw = String(cityInput || '').trim();
+  const normalized = normalizeCityToken(cleanRaw);
+  if (normalized && CITY_PROVINCE_MAP[normalized] && normalized !== '全国多地') {
+    return { city: normalized, ...CITY_PROVINCE_MAP[normalized] };
   }
-  return { city: '全国多地', province: '全国多地', tier: '其他/海外' };
+
+  if (!cleanRaw || VAGUE_CITY_RE.test(cleanRaw)) {
+    const fb = String(fallbackText || '');
+    for (const cityName of KNOWN_CITY_NAMES_BY_LENGTH) {
+      if (cityName !== '全国多地' && fb.includes(cityName)) {
+        return { city: cityName, ...CITY_PROVINCE_MAP[cityName] };
+      }
+    }
+    return { city: '全国多地', province: '全国多地', tier: '其他/海外' };
+  }
+
+  if (normalized === '全国多地') {
+    return { city: '全国多地', province: '全国多地', tier: '其他/海外' };
+  }
+
+  return { city: normalized, province: normalized, tier: '省会及重点城市' };
+}
+
+export function inferCityTier(cityInput = '') {
+  return inferCityInfo(cityInput).tier;
+}
+
+export function normalizeJobLocation(cityInput = '', provinceInput = '') {
+  const rawCity = String(cityInput || '').trim();
+  const rawProvince = String(provinceInput || '').trim();
+  const info = inferCityInfo(rawCity);
+  const province =
+    info.province !== info.city
+      ? info.province
+      : rawProvince && rawProvince !== rawCity
+        ? rawProvince
+        : info.province;
+  return {
+    city: info.city,
+    province,
+    city_tier: info.tier,
+  };
 }
 
 export function inferCategory(title = '', fallbackText = '') {

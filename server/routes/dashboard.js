@@ -66,11 +66,11 @@ export function createDashboardRouter(db) {
     const topCities = db
       .prepare(
         `
-      SELECT city, city_tier, COUNT(*) AS count
+      SELECT city, MAX(city_tier) AS city_tier, COUNT(*) AS count
       FROM jobs
       WHERE status IN ('open', 'closing_soon')
-      GROUP BY city, city_tier
-      ORDER BY count DESC
+      GROUP BY city
+      ORDER BY count DESC, city ASC
       LIMIT 10
     `,
       )

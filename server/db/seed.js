@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { normalizeJobLocation } from '../../shared/jobParser.js';
 import {
   CATALOG_UPDATED_AT,
   DEFAULT_SYNC_SOURCES,
@@ -511,6 +512,7 @@ export function upsertBuiltInCatalog(db, options = {}) {
     ];
 
     for (const j of jobsToUpsert) {
+      const normalizedLoc = normalizeJobLocation(j.city, j.province);
       upsertJob.run(
         j.id,
         j.company_id,
@@ -521,9 +523,9 @@ export function upsertBuiltInCatalog(db, options = {}) {
         j.category,
         j.season_tag,
         JSON.stringify(j.graduation_years || []),
-        j.province,
-        j.city,
-        j.city_tier || '一线',
+        normalizedLoc.province,
+        normalizedLoc.city,
+        normalizedLoc.city_tier || '省会及重点城市',
         j.official_source_url,
         j.official_domain,
         j.deadline,
@@ -537,6 +539,15 @@ export function upsertBuiltInCatalog(db, options = {}) {
       );
       if (existingJobIds.has(j.id)) jobsUpdated += 1;
       else jobsAdded += 1;
+    }
+
+    // Heal any existing DB rows (including user_submitted or legacy ATS sync rows) with unnormalized city names or drifted city_tier
+    const updateLocationStmt = db.prepare('UPDATE jobs SET city = ?, province = ?, city_tier = ? WHERE id = ?');
+    for (const row of db.prepare('SELECT id, city, province, city_tier FROM jobs').all()) {
+      const nextLoc = normalizeJobLocation(row.city, row.province);
+      if (nextLoc.city !== row.city || nextLoc.province !== row.province || nextLoc.city_tier !== row.city_tier) {
+        updateLocationStmt.run(nextLoc.city, nextLoc.province, nextLoc.city_tier, row.id);
+      }
     }
 
     for (const src of DEFAULT_SYNC_SOURCES) {

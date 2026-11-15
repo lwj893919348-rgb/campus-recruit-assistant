@@ -487,16 +487,22 @@ export const JobSearchPage = memo(function JobSearchPage({
     return () => observer.disconnect();
   }, [isActive, subView, visibleCompanyCount, filteredCompanies.length]);
 
-  const visibleCityChips = useMemo(
-    () =>
-      regionGroup === '全部'
-        ? facets.cities
-        : facets.cities.filter((c) => {
-            const g = REGION_GROUPS.find((rg) => rg.id === regionGroup);
-            return g ? g.cities.includes(c.city) || c.city_tier === regionGroup : true;
-          }),
-    [regionGroup, facets.cities],
-  );
+  const visibleCityChips = useMemo(() => {
+    const mergedByCity = new Map();
+    for (const item of facets.cities || []) {
+      const cityKey = String(item.city || '').trim();
+      if (!cityKey) continue;
+      if (!mergedByCity.has(cityKey)) {
+        mergedByCity.set(cityKey, { ...item, city: cityKey });
+      } else {
+        mergedByCity.get(cityKey).count += item.count || 0;
+      }
+    }
+    const deduped = Array.from(mergedByCity.values());
+    if (regionGroup === '全部') return deduped;
+    const g = REGION_GROUPS.find((rg) => rg.id === regionGroup);
+    return g ? deduped.filter((c) => g.cities.includes(c.city) || c.city_tier === regionGroup) : deduped;
+  }, [regionGroup, facets.cities]);
 
   const recruitTypeCountMap = useMemo(
     () => Object.fromEntries((facets.recruitTypes || []).map((item) => [item.value, item.count])),
@@ -714,7 +720,7 @@ export const JobSearchPage = memo(function JobSearchPage({
                   const active = selectedCities.includes(c.city);
                   return (
                     <button
-                      key={`${c.city}-${c.province}`}
+                      key={c.city}
                       type="button"
                       onClick={() => toggleCity(c.city)}
                       className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs transition ${

@@ -6,24 +6,8 @@ import {
   isPrivateOrLoopbackHost,
   verifyOfficialUrl,
 } from '../services/officialVerifier.js';
-import { inferCategory, inferRecruitTypeAndExp } from '../../shared/jobParser.js';
+import { inferCategory, inferRecruitTypeAndExp, normalizeJobLocation } from '../../shared/jobParser.js';
 import { resolveJobOfficialTarget } from '../../shared/jobLinkResolver.js';
-
-function inferCityTier(city = '') {
-  if (['北京', '上海', '深圳', '广州'].includes(city)) return '一线城市';
-  if (
-    [
-      '杭州', '成都', '南京', '武汉', '西安', '苏州', '长沙', '重庆', '合肥', '天津', '郑州', '东莞', '佛山', '青岛', '宁波',
-      '沈阳', '无锡', '昆明', '福州',
-    ].includes(
-      city,
-    )
-  ) {
-    return '新一线';
-  }
-  if (['全国多地', '海外', '远程'].includes(city)) return '其他/海外';
-  return '省会及重点城市';
-}
 
 function parseOfficialHttpUrl(rawUrl = '') {
   const trimmed = String(rawUrl || '').trim();
@@ -154,9 +138,10 @@ function resolveOrCreateCompany(db, payload, parsedUrl, now) {
 
 function insertUserJob(db, companyId, payload, parsedUrl, rootDomain, now) {
   const jobId = `job-${crypto.randomBytes(5).toString('hex')}`;
-  const cleanCity = String(payload.city || '').trim();
-  const cleanProvince = String(payload.province || '').trim() || cleanCity;
-  const tier = inferCityTier(cleanCity);
+  const { city: cleanCity, province: cleanProvince, city_tier: tier } = normalizeJobLocation(
+    payload.city,
+    payload.province,
+  );
   const title = String(payload.title || '').trim();
   const meta = inferRecruitTypeAndExp({
     title,
@@ -382,9 +367,9 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
     const cityFacets = db
       .prepare(
         `
-      SELECT city, province, city_tier, COUNT(*) AS count
+      SELECT city, MAX(province) AS province, MAX(city_tier) AS city_tier, COUNT(*) AS count
       FROM jobs
-      GROUP BY city, province, city_tier
+      GROUP BY city
       ORDER BY count DESC, city ASC
     `,
       )
