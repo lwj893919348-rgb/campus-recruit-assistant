@@ -119,8 +119,10 @@ export function QuickTrackModal({ open, job, resumes, onClose, onSubmit }) {
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none"
               >
                 <option value="官网直投">官网直投</option>
-                <option value="校招内推">校招内推</option>
+                <option value="内推通道">校招 / 社招内推</option>
+                <option value="公众号网申">企业公众号推文网申</option>
                 <option value="校园宣讲">校园宣讲 / 双选会</option>
+                <option value="猎头/HR直联">猎头 / HR 直联</option>
               </select>
             </div>
           </div>

@@ -9,9 +9,9 @@ import { ResumeBuilderPage } from './pages/ResumeBuilderPage.jsx';
 import { ApplicationsPage } from './pages/ApplicationsPage.jsx';
 
 const TABS = [
-  { id: 'dashboard', label: '校招总览', icon: LayoutDashboard },
-  { id: 'jobs', label: '官网校招搜索', icon: Search },
-  { id: 'resume', label: '校招简历工坊', icon: FileText },
+  { id: 'dashboard', label: '全景概览', icon: LayoutDashboard },
+  { id: 'jobs', label: '全行业官方直聘', icon: Search },
+  { id: 'resume', label: 'A4 简历工坊', icon: FileText },
   { id: 'applications', label: '投递进度管理', icon: KanbanSquare },
 ];
 
@@ -113,8 +113,8 @@ export default function App() {
               <Compass className="h-5 w-5" />
             </span>
             <div>
-              <div className="text-sm font-bold tracking-tight text-slate-900">职航 · 大学生校招助手</div>
-              <div className="text-[11px] text-slate-500">官方岗位检索 · A4 简历工坊 · 投递进度管理</div>
+              <div className="text-sm font-bold tracking-tight text-slate-900">职航 · 全景官方直聘助手</div>
+              <div className="text-[11px] text-slate-500">校招 / 社招 / 实习全品类 · 公众号公告解析 · 简历工坊</div>
             </div>
           </button>
 

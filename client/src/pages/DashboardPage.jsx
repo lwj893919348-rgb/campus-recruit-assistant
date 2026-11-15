@@ -56,14 +56,28 @@ export function DashboardPage({ onNavigate, onFilterCity, onOpenResume, onQuickT
           <div className="space-y-2">
             <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
               <ShieldCheck className="h-3.5 w-3.5" />
-              直连企业校招官网 · 杜绝培训引流与虚假二手岗
+              直连企业校招 / 社招官网 · 杜绝虚假二手岗与培训引流
             </div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
-              2026 / 2027 届大学生校招工作台
+              职航 · 全景官方直聘工作台
             </h1>
             <p className="max-w-2xl text-sm text-slate-600">
-              按城市筛选已核验的企业官网校招岗、使用校招专属 A4 模板打磨简历，并在投递看板实时跟踪每一场笔试与面试。
+              覆盖校园招聘、社会招聘与实习兼职 16 大行业职能方向；支持企业公众号公告智能解析、A4 简历精排与全流程投递追踪。
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 font-medium text-blue-700">
+                校园招聘：{summary.recruitTypeCounts?.['校园招聘'] ?? 0} 岗
+              </span>
+              <span className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 font-medium text-violet-700">
+                社会招聘：{summary.recruitTypeCounts?.['社会招聘'] ?? 0} 岗
+              </span>
+              <span className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 font-medium text-amber-800">
+                实习兼职：{summary.recruitTypeCounts?.['实习兼职'] ?? 0} 岗
+              </span>
+              <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium text-slate-700">
+                全品类职能：{summary.categoryCount ?? 16} 大类
+              </span>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
@@ -166,7 +180,7 @@ export function DashboardPage({ onNavigate, onFilterCity, onOpenResume, onQuickT
         <div className="space-y-6 lg:col-span-7">
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-slate-900">校招投递漏斗分布</h2>
+              <h2 className="text-base font-semibold text-slate-900">官方投递漏斗分布</h2>
               <button
                 type="button"
                 onClick={() => onNavigate('applications')}
@@ -194,8 +208,8 @@ export function DashboardPage({ onNavigate, onFilterCity, onOpenResume, onQuickT
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <h2 className="text-base font-semibold text-slate-900">热门校招城市直通车</h2>
-                <p className="text-xs text-slate-500">点击城市一键查看当地真实官网在招岗位</p>
+                <h2 className="text-base font-semibold text-slate-900">热门直聘城市直通车</h2>
+                <p className="text-xs text-slate-500">点击城市一键查看当地真实官网在招岗位（校招 + 社招）</p>
               </div>
               <MapPin className="h-4 w-4 text-blue-600" />
             </div>
@@ -219,7 +233,7 @@ export function DashboardPage({ onNavigate, onFilterCity, onOpenResume, onQuickT
           {/* Featured Companies */}
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-slate-900">已核验名企校招官方入口</h2>
+              <h2 className="text-base font-semibold text-slate-900">已核验名企官方招聘入口</h2>
               <button
                 type="button"
                 onClick={() => onNavigate('jobs')}

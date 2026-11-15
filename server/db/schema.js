@@ -20,6 +20,8 @@ export function initSchema(db) {
       company_type TEXT NOT NULL,
       official_domain TEXT NOT NULL,
       official_campus_url TEXT NOT NULL,
+      official_social_url TEXT DEFAULT '',
+      wechat_account TEXT DEFAULT '',
       search_url_template TEXT DEFAULT '',
       badge_color TEXT NOT NULL DEFAULT '#2563EB',
       hq_city TEXT NOT NULL,
@@ -149,9 +151,14 @@ export function initSchema(db) {
 
   // Backward-compatible migrations for existing v1 databases
   ensureColumn(db, 'companies', 'search_url_template', "TEXT DEFAULT ''");
+  ensureColumn(db, 'companies', 'official_social_url', "TEXT DEFAULT ''");
+  ensureColumn(db, 'companies', 'wechat_account', "TEXT DEFAULT ''");
   ensureColumn(db, 'companies', 'updated_at', "TEXT DEFAULT ''");
   ensureColumn(db, 'companies', 'legal_name', "TEXT DEFAULT ''");
   ensureColumn(db, 'companies', 'entity_tag', "TEXT DEFAULT ''");
   ensureColumn(db, 'jobs', 'external_id', "TEXT DEFAULT ''");
+  ensureColumn(db, 'jobs', 'recruit_type', "TEXT NOT NULL DEFAULT '校园招聘'");
+  ensureColumn(db, 'jobs', 'experience_req', "TEXT NOT NULL DEFAULT '应届毕业生'");
   db.exec('CREATE INDEX IF NOT EXISTS idx_jobs_external_id ON jobs(external_id);');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_jobs_recruit_type ON jobs(recruit_type);');
 }

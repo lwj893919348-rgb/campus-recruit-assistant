@@ -196,6 +196,88 @@ const SAMPLE_RESUMES = [
       summary: '中共党员，具备“经济金融 + 数据建模”复合学科背景与国有大行总行实习经历，公文写作规范严谨，责任心与抗压能力强。',
     },
   },
+  {
+    id: 'resume-social-sample',
+    title: '社招通用版 - 资深产品与业务架构简历',
+    template_id: 'compact-two-col',
+    theme_color: '#0F766E',
+    font_scale: 'compact',
+    margin_preset: 'narrow',
+    section_order: ['internship', 'projects', 'education', 'skills', 'awards', 'summary'],
+    hidden_sections: ['campus'],
+    is_default: 0,
+    content_json: {
+      basic: {
+        name: '林远航',
+        phone: '139-0000-5678',
+        email: 'yuanhang.lin@example.com',
+        city: '意向城市：上海 / 杭州',
+        targetRole: '高级产品经理 / B端解决方案架构师',
+        github: '',
+        portfolio: 'https://linkedin.com/in/example',
+        politicalStatus: '群众',
+        hometown: '浙江杭州',
+        englishLevel: 'CET-6 / 英语可作为工作语言',
+        gradDate: '社招 · 4年经验',
+        avatar: '',
+      },
+      education: [
+        {
+          id: 'edu-soc-1',
+          school: '同济大学',
+          degree: '本科',
+          major: '工业工程',
+          period: '2018.09 - 2022.06',
+          gpa: 'GPA 3.7/4.0',
+          courses: '核心课程：运筹学、系统工程、管理信息系统、人机交互设计',
+        },
+      ],
+      internship: [
+        {
+          id: 'work-soc-1',
+          company: '某头部SaaS软件科技公司 · 企业服务产品部',
+          role: '高级产品经理',
+          period: '2024.03 - 至今',
+          city: '上海',
+          bullets: [
+            '负责供应链与业财一体化 SaaS 核心工作台产品规划，主导审批流引擎与权限中心重构，客户续费率提升 9.4 个百分点。',
+            '联动售前与交付团队落地 14 家大型制造及零售集团标杆项目，单项目平均客单价由 45 万提升至 78 万。',
+          ],
+        },
+        {
+          id: 'work-soc-2',
+          company: '某一线互联网平台 · 商业化产品团队',
+          role: '产品经理',
+          period: '2022.07 - 2024.02',
+          city: '杭州',
+          bullets: [
+            '负责中小商家投放增长后台与线索归因链路设计，通过漏斗诊断工具将商家首月留存率提升 11%。',
+          ],
+        },
+      ],
+      projects: [
+        {
+          id: 'proj-soc-1',
+          name: 'AI 智能客服工单与知识库中台 0-1 建设',
+          role: '项目负责人',
+          period: '2025.04 - 2026.02',
+          link: '',
+          bullets: [
+            '设计基于企业私有知识库的 RAG 检索增强流程与人工接管降级策略，上线后高频标准问题自动解决率达 64%，客服人效提升 38%。',
+          ],
+        },
+      ],
+      campus: [],
+      skills: [
+        { id: 'sk-soc-1', label: '产品与商业化', items: '熟悉 B端业财/供应链建模、SQL 数据分析、Axure/Figma 原型设计、PRD 与招投标方案撰写' },
+        { id: 'sk-soc-2', label: '跨团队协同', items: '具备千万级营收产线跨部门PMO推进经验，持有 PMP 项目管理认证' },
+      ],
+      awards: [
+        { id: 'aw-soc-1', title: '2025 年度公司级最佳商业化产品创新奖', date: '2026.01' },
+      ],
+      summary: '4年B端SaaS与商业化产品实战经验，擅长从复杂企业业务流程中抽象标准化产品架构，兼顾商业化落地与研发交付效率。',
+    },
+  },
 ];
 
 const DEMO_APPLICATIONS = [
@@ -294,9 +376,9 @@ export function upsertBuiltInCatalog(db) {
   const upsertCompany = db.prepare(`
     INSERT INTO companies (
       id, name, short_name, industry, company_type, official_domain,
-      official_campus_url, search_url_template, badge_color, hq_city,
+      official_campus_url, official_social_url, wechat_account, search_url_template, badge_color, hq_city,
       legal_name, entity_tag, verification_status, last_verified_at, updated_at, notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'verified_official', ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'verified_official', ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       short_name = excluded.short_name,
@@ -304,6 +386,8 @@ export function upsertBuiltInCatalog(db) {
       company_type = excluded.company_type,
       official_domain = excluded.official_domain,
       official_campus_url = excluded.official_campus_url,
+      official_social_url = excluded.official_social_url,
+      wechat_account = excluded.wechat_account,
       search_url_template = excluded.search_url_template,
       badge_color = excluded.badge_color,
       hq_city = excluded.hq_city,
@@ -315,12 +399,14 @@ export function upsertBuiltInCatalog(db) {
 
   const upsertJob = db.prepare(`
     INSERT INTO jobs (
-      id, company_id, external_id, title, category, season_tag, graduation_years,
+      id, company_id, external_id, recruit_type, experience_req, title, category, season_tag, graduation_years,
       province, city, city_tier, official_source_url, official_domain,
       deadline, status, is_referral, salary_range, requirements_summary,
       sync_source, last_checked_at, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
+      recruit_type = excluded.recruit_type,
+      experience_req = excluded.experience_req,
       title = excluded.title,
       category = excluded.category,
       season_tag = excluded.season_tag,
@@ -359,6 +445,8 @@ export function upsertBuiltInCatalog(db) {
         c.company_type,
         c.official_domain,
         c.official_campus_url,
+        c.official_social_url || '',
+        c.wechat_account || '',
         c.search_url_template || '',
         c.badge_color,
         c.hq_city,
@@ -377,6 +465,8 @@ export function upsertBuiltInCatalog(db) {
         j.id,
         j.company_id,
         j.external_id || '',
+        j.recruit_type || '校园招聘',
+        j.experience_req || '应届毕业生',
         j.title,
         j.category,
         j.season_tag,

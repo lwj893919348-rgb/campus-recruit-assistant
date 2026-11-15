@@ -14,11 +14,17 @@ import {
   X,
   RotateCcw,
   Database,
+  Copy,
+  Check,
+  Briefcase,
+  MessageSquareText,
 } from 'lucide-react';
 import { api } from '../api/client.js';
 import SyncCenterModal from '../components/SyncCenterModal.jsx';
 import {
   REGION_GROUPS,
+  RECRUIT_TYPE_OPTIONS,
+  EXPERIENCE_OPTIONS,
   SEASON_OPTIONS,
   GRAD_YEAR_OPTIONS,
   COMPANY_TYPE_OPTIONS,
@@ -36,6 +42,9 @@ const INITIAL_NEW_JOB = {
   companyType: '优质企业',
   legalName: '',
   entityTag: '',
+  wechatAccount: '',
+  recruitType: '校园招聘',
+  experienceReq: '应届毕业生',
   title: '',
   city: '北京',
   province: '北京',
@@ -43,6 +52,7 @@ const INITIAL_NEW_JOB = {
   seasonTag: '2027届秋招补录',
   graduationYears: ['2027'],
   officialUrl: '',
+  salaryRange: '',
   deadline: '招满即止',
   isReferral: false,
   requirementsSummary: '',
@@ -57,8 +67,12 @@ const INITIAL_NEW_COMPANY = {
   industry: '人工智能 / 硬科技',
   hqCity: '北京',
   officialUrl: '',
+  officialSocialUrl: '',
+  wechatAccount: '',
   notes: '',
   addInitialJob: false,
+  recruitType: '校园招聘',
+  experienceReq: '应届毕业生',
   jobTitle: '',
   category: '技术研发',
   seasonTag: '2027届秋招补录',
@@ -86,11 +100,20 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
   const [gradYear, setGradYear] = useState('全部');
   const [companyType, setCompanyType] = useState('全部');
   const [category, setCategory] = useState('全部');
+  const [recruitType, setRecruitType] = useState('全部');
+  const [experienceReq, setExperienceReq] = useState('全部');
   const [onlyOpen, setOnlyOpen] = useState(true);
   const [onlyReferral, setOnlyReferral] = useState(false);
 
   const [jobs, setJobs] = useState([]);
-  const [facets, setFacets] = useState({ cities: [], seasons: [], categories: [], companyTypes: [] });
+  const [facets, setFacets] = useState({
+    cities: [],
+    seasons: [],
+    categories: [],
+    companyTypes: [],
+    recruitTypes: [],
+    experienceReqs: [],
+  });
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -98,6 +121,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
   const [batchVerifying, setBatchVerifying] = useState(false);
   const [updatingJobs, setUpdatingJobs] = useState(false);
   const [verifyFeedbackMap, setVerifyFeedbackMap] = useState({});
+  const [copiedWechatId, setCopiedWechatId] = useState(null);
 
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncSummary, setSyncSummary] = useState(null);
@@ -131,6 +155,8 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
         gradYear,
         companyType,
         category,
+        recruitType,
+        experienceReq,
         onlyOpen: onlyOpen ? '1' : '',
         onlyReferral: onlyReferral ? '1' : '',
       });
@@ -141,7 +167,20 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
     } finally {
       setLoading(false);
     }
-  }, [q, selectedCities, regionGroup, season, gradYear, companyType, category, onlyOpen, onlyReferral, onToast]);
+  }, [
+    q,
+    selectedCities,
+    regionGroup,
+    season,
+    gradYear,
+    companyType,
+    category,
+    recruitType,
+    experienceReq,
+    onlyOpen,
+    onlyReferral,
+    onToast,
+  ]);
 
   const loadCompanies = useCallback(async () => {
     try {
@@ -192,8 +231,21 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
     setGradYear('全部');
     setCompanyType('全部');
     setCategory('全部');
+    setRecruitType('全部');
+    setExperienceReq('全部');
     setOnlyOpen(true);
     setOnlyReferral(false);
+  }
+
+  async function handleCopyWechat(id, accountName) {
+    try {
+      await navigator.clipboard?.writeText(accountName);
+      setCopiedWechatId(id);
+      onToast('success', `已复制企业招聘公众号「${accountName}」，可在微信中直接搜索关注`);
+      setTimeout(() => setCopiedWechatId(null), 2000);
+    } catch {
+      onToast('info', `企业招聘公众号：${accountName}`);
+    }
   }
 
   async function handleVerifySingle(payload, key) {
@@ -286,7 +338,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
     if (companyWallType !== '全部' && c.company_type !== companyWallType) return false;
     if (companyQuery.trim()) {
       const kw = companyQuery.trim().toLowerCase();
-      const hay = `${c.name} ${c.short_name} ${c.legal_name || ''} ${c.entity_tag || ''} ${c.industry} ${c.hq_city} ${c.company_type}`.toLowerCase();
+      const hay = `${c.name} ${c.short_name} ${c.legal_name || ''} ${c.entity_tag || ''} ${c.wechat_account || ''} ${c.industry} ${c.hq_city} ${c.company_type}`.toLowerCase();
       if (!hay.includes(kw)) return false;
     }
     return true;
@@ -300,19 +352,27 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
           return g ? g.cities.includes(c.city) || c.city_tier === regionGroup : true;
         });
 
+  const recruitTypeCountMap = Object.fromEntries(
+    (facets.recruitTypes || []).map((item) => [item.value, item.count]),
+  );
+  const categoryCountMap = Object.fromEntries(
+    (facets.categories || []).map((item) => [item.value, item.count]),
+  );
+  const totalRecruitFacetCount = (facets.recruitTypes || []).reduce((sum, item) => sum + (item.count || 0), 0);
+
   return (
     <div className="space-y-5">
       {/* Top Bar */}
       <div className="flex flex-col justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-xs sm:flex-row sm:items-center">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-lg font-bold text-slate-900">真实官网校招信息检索与地区筛选</h1>
+            <h1 className="text-lg font-bold text-slate-900">全行业官方直聘搜索与地区筛选</h1>
             <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
-              {companies.length} 家官方名企 · {syncSummary?.counts?.openJobs ?? jobs.length} 在招岗
+              {companies.length} 家官方企业 · {syncSummary?.counts?.openJobs ?? jobs.length} 在招岗（校招/社招/实习）
             </span>
           </div>
           <p className="mt-0.5 text-xs text-slate-500">
-            所有岗位均标注企业官方主域名并支持实时可达性核验；支持订阅公开校招源、截止自动下线与官网带参直搜
+            覆盖 16 大职能全品类与校招 / 社招 / 实习通道；均标注官方主域名、工商主体与认证招聘公众号，支持公众号公告一键解析导入
           </p>
         </div>
 
@@ -371,6 +431,59 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
         <>
           {/* Search & Multi-Tier Region Filter Card */}
           <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+            {/* Recruit Type Segmented Tabs */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 inline-flex items-center gap-1 text-xs font-semibold text-slate-700">
+                  <Briefcase className="h-3.5 w-3.5 text-blue-600" />
+                  招聘通道：
+                </span>
+                {RECRUIT_TYPE_OPTIONS.map((rt) => {
+                  const active = recruitType === rt;
+                  const count = rt === '全部' ? totalRecruitFacetCount : recruitTypeCountMap[rt] ?? 0;
+                  return (
+                    <button
+                      key={rt}
+                      type="button"
+                      onClick={() => setRecruitType(rt)}
+                      className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+                        active
+                          ? 'bg-slate-900 text-white shadow-xs'
+                          : 'border border-slate-200 bg-slate-50/80 text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
+                      }`}
+                    >
+                      <span>{rt}</span>
+                      {count > 0 && (
+                        <span
+                          className={`rounded-md px-1.5 py-0.5 text-[10px] tabular-nums ${
+                            active ? 'bg-white/20 text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center gap-2 text-xs">
+                <span className="font-medium text-slate-500">经验/身份：</span>
+                <select
+                  aria-label="经验要求"
+                  value={experienceReq}
+                  onChange={(e) => setExperienceReq(e.target.value)}
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none"
+                >
+                  {EXPERIENCE_OPTIONS.map((exp) => (
+                    <option key={exp} value={exp}>
+                      {exp === '全部' ? '经验不限（全部）' : exp}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             {/* Search Input */}
             <div className="flex flex-col gap-3 md:flex-row">
               <div className="relative flex-1">
@@ -379,7 +492,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                   type="text"
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="搜索公司名、岗位关键词（如：Java、大模型、产品经理、管培生、国家电网）..."
+                  placeholder="搜索公司名、招聘公众号、岗位或技能（如：Java、财务审计、临床研究、大客户销售、新能源）..."
                   className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 pr-4 pl-10 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none"
                 />
               </div>
@@ -551,18 +664,48 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                     onChange={(e) => setOnlyReferral(e.target.checked)}
                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                   />
-                  <span>仅看支持校招内推</span>
+                  <span>仅看支持内推</span>
                 </label>
+              </div>
+            </div>
+
+            {/* 16 Occupational Category Quick Pills */}
+            <div className="space-y-1.5 border-t border-slate-100 pt-3">
+              <div className="text-[11px] font-medium text-slate-500">全行业职能分类（16 大品类）：</div>
+              <div className="flex flex-wrap gap-1.5">
+                {JOB_CATEGORY_OPTIONS.map((cat) => {
+                  const active = category === cat;
+                  const count = cat === '全部' ? null : categoryCountMap[cat] ?? 0;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setCategory(cat)}
+                      className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                        active
+                          ? 'border-blue-600 bg-blue-600 text-white shadow-xs'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600'
+                      }`}
+                    >
+                      <span>{cat}</span>
+                      {count !== null && (
+                        <span className={`tabular-nums text-[10px] ${active ? 'text-blue-100' : 'text-slate-400'}`}>
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </section>
 
-          {/* Anti-Trap Student Tip */}
+          {/* Anti-Trap Candidate Tip */}
           <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200/80 bg-emerald-50/50 px-4 py-2.5 text-xs text-emerald-900">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
             <span>
-              <strong>官网防坑提示：</strong>
-              所有标注绿色「官网认证」的链接均直指企业官方校招根域名；即便使用内推码，最终仍须在企业官网完成正式网申才算生效。遇到需要“付费保Offer/培训内推”的第三方渠道请直接拉黑。
+              <strong>官网防坑与公众号核验提示：</strong>
+              无论校招、社招还是实习，所有标注绿色「官网认证」的链接均直指企业官方网申主域名；如看到微信公众号推送的招聘信息，可将正文复制到「信息更新中心」智能提取岗位，但最终务必通过企业官方域名网申投递。
             </span>
           </div>
 
@@ -655,16 +798,49 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
 
                       {/* Tags */}
                       <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+                        <span
+                          className={`rounded-md border px-2 py-0.5 font-semibold ${
+                            job.recruit_type === '社会招聘'
+                              ? 'border-violet-200 bg-violet-50 text-violet-700'
+                              : job.recruit_type === '实习兼职'
+                                ? 'border-amber-200 bg-amber-50 text-amber-800'
+                                : 'border-blue-200 bg-blue-50 text-blue-700'
+                          }`}
+                        >
+                          {job.recruit_type || '校园招聘'}
+                        </span>
                         <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 font-medium text-blue-700">
                           <MapPin className="h-3 w-3" />
                           {job.city}
                           {job.province && job.province !== job.city ? ` · ${job.province}` : ''}
                         </span>
-                        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-700">{job.season_tag}</span>
                         <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-700">{job.category}</span>
                         <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-700">
-                          面向 {job.graduation_years.join('/')} 届
+                          {job.experience_req || '应届毕业生'}
                         </span>
+                        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-700">{job.season_tag}</span>
+                        {job.recruit_type !== '社会招聘' &&
+                          !(job.graduation_years || []).includes('社招不限') &&
+                          (job.graduation_years || []).length > 0 && (
+                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-700">
+                              面向 {job.graduation_years.join('/')} 届
+                            </span>
+                          )}
+                        {job.company_wechat_account && (
+                          <button
+                            type="button"
+                            onClick={() => handleCopyWechat(job.id, job.company_wechat_account)}
+                            title="点击复制官方招聘公众号名称，可在微信搜一搜查看推文"
+                            className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700 hover:bg-emerald-100"
+                          >
+                            {copiedWechatId === job.id ? (
+                              <Check className="h-3 w-3" />
+                            ) : (
+                              <MessageSquareText className="h-3 w-3" />
+                            )}
+                            公众号：{job.company_wechat_account}
+                          </button>
+                        )}
                         {job.is_referral && (
                           <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 font-medium text-indigo-700">
                             <Sparkles className="h-3 w-3" /> 支持内推
@@ -715,7 +891,8 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                         >
-                          直达官网 <ExternalLink className="h-3 w-3" />
+                          {job.recruit_type === '社会招聘' ? '直达社招官网' : '直达官网'}{' '}
+                          <ExternalLink className="h-3 w-3" />
                         </a>
 
                         {trackedInfo ? (
@@ -780,7 +957,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                   type="text"
                   value={companyQuery}
                   onChange={(e) => setCompanyQuery(e.target.value)}
-                  placeholder="筛选企业名称、工商全称、股票代码、行业或城市（如：汇川、300124、信创、苏州）..."
+                  placeholder="筛选企业名称、微信公众号（如：腾讯招聘）、工商全称、行业或城市..."
                   className="w-full rounded-xl border border-slate-200 bg-slate-50/60 py-2 pr-3 pl-9 text-xs text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none"
                 />
               </div>
@@ -853,6 +1030,23 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                       <span className="truncate font-mono text-[11px]">{c.official_campus_url}</span>
                     </div>
 
+                    {c.wechat_account && (
+                      <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-emerald-200/80 bg-emerald-50/70 px-2.5 py-1.5 text-[11px] text-emerald-900">
+                        <span className="flex items-center gap-1.5 truncate font-medium">
+                          <MessageSquareText className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                          <span className="truncate">官方招聘公众号：{c.wechat_account}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyWechat(c.id, c.wechat_account)}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-50"
+                        >
+                          {copiedWechatId === c.id ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                          {copiedWechatId === c.id ? '已复制' : '复制'}
+                        </button>
+                      </div>
+                    )}
+
                     {(c.legal_name || c.entity_tag) && (
                       <div className="mt-2 rounded-lg border border-amber-200/70 bg-amber-50/60 px-2.5 py-1.5 text-[11px] text-amber-950">
                         {c.legal_name && (
@@ -900,13 +1094,23 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                           带参搜官网 <ExternalLink className="h-3 w-3" />
                         </a>
                       )}
+                      {c.official_social_url && c.official_social_url !== c.official_campus_url && (
+                        <a
+                          href={c.official_social_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700 hover:bg-violet-100"
+                        >
+                          社招官网 <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
                       <a
                         href={c.official_campus_url}
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1 text-xs font-medium text-white hover:bg-slate-800"
                       >
-                        进入官网 <ExternalLink className="h-3 w-3" />
+                        {c.official_social_url ? '校招官网' : '进入官网'} <ExternalLink className="h-3 w-3" />
                       </a>
                     </div>
                   </div>
@@ -924,7 +1128,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
               <div className="flex items-center gap-2">
                 <Building2 className="h-4 w-4 text-blue-600" />
-                <h3 className="text-base font-semibold text-slate-900">收录企业官网校招岗位</h3>
+                <h3 className="text-base font-semibold text-slate-900">收录企业官网直招岗位（校招 / 社招 / 实习）</h3>
               </div>
               <button
                 type="button"
@@ -1058,7 +1262,52 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">招聘季</label>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">招聘通道 *</label>
+                  <select
+                    value={newJob.recruitType}
+                    onChange={(e) => {
+                      const nextRt = e.target.value;
+                      setNewJob({
+                        ...newJob,
+                        recruitType: nextRt,
+                        experienceReq:
+                          nextRt === '社会招聘' ? '1-3年' : nextRt === '实习兼职' ? '在校实习生' : '应届毕业生',
+                        seasonTag:
+                          nextRt === '社会招聘'
+                            ? '2026-2027社招急聘'
+                            : nextRt === '实习兼职'
+                              ? '日常实习'
+                              : '2027届秋招补录',
+                      });
+                    }}
+                    className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  >
+                    {RECRUIT_TYPE_OPTIONS.filter((x) => x !== '全部').map((rt) => (
+                      <option key={rt} value={rt}>
+                        {rt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">经验要求</label>
+                  <select
+                    value={newJob.experienceReq}
+                    onChange={(e) => setNewJob({ ...newJob, experienceReq: e.target.value })}
+                    className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  >
+                    {EXPERIENCE_OPTIONS.filter((x) => x !== '全部').map((exp) => (
+                      <option key={exp} value={exp}>
+                        {exp}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">招聘季 / 批次</label>
                   <select
                     value={newJob.seasonTag}
                     onChange={(e) => setNewJob({ ...newJob, seasonTag: e.target.value })}
@@ -1072,7 +1321,16 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">网申截止日期</label>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">参考薪资（选填）</label>
+                  <input
+                    value={newJob.salaryRange}
+                    onChange={(e) => setNewJob({ ...newJob, salaryRange: e.target.value })}
+                    placeholder="如：25-45K / 面议"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">投递截止日期</label>
                   <input
                     value={newJob.deadline}
                     onChange={(e) => setNewJob({ ...newJob, deadline: e.target.value })}
@@ -1241,14 +1499,36 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">校招 / 主招聘官网链接 *</label>
+                  <input
+                    required
+                    type="url"
+                    value={newCompany.officialUrl}
+                    onChange={(e) => setNewCompany({ ...newCompany, officialUrl: e.target.value })}
+                    placeholder="https://xxx.jobs.feishu.cn/ 或 https://careers.example.com"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">社招官网链接（可选）</label>
+                  <input
+                    type="url"
+                    value={newCompany.officialSocialUrl}
+                    onChange={(e) => setNewCompany({ ...newCompany, officialSocialUrl: e.target.value })}
+                    placeholder="https://zhaopin.example.com"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">官方招聘 / 校招主页链接 *</label>
+                <label className="mb-1 block text-xs font-medium text-slate-700">企业官方招聘微信公众号（可选）</label>
                 <input
-                  required
-                  type="url"
-                  value={newCompany.officialUrl}
-                  onChange={(e) => setNewCompany({ ...newCompany, officialUrl: e.target.value })}
-                  placeholder="https://xxx.jobs.feishu.cn/ 或 https://careers.example.com"
+                  value={newCompany.wechatAccount}
+                  onChange={(e) => setNewCompany({ ...newCompany, wechatAccount: e.target.value })}
+                  placeholder="如：某某科技招聘（可在企业墙一键复制并检索公众号推送岗位）"
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
                 />
               </div>
@@ -1299,6 +1579,31 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                     </div>
                     <div className="grid grid-cols-3 gap-2.5">
                       <div>
+                        <label className="mb-1 block text-[11px] font-medium text-slate-700">招聘通道</label>
+                        <select
+                          value={newCompany.recruitType}
+                          onChange={(e) =>
+                            setNewCompany({
+                              ...newCompany,
+                              recruitType: e.target.value,
+                              experienceReq:
+                                e.target.value === '社会招聘'
+                                  ? '1-3年'
+                                  : e.target.value === '实习兼职'
+                                    ? '在校实习生'
+                                    : '应届毕业生',
+                            })
+                          }
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs focus:border-violet-500 focus:outline-none"
+                        >
+                          {RECRUIT_TYPE_OPTIONS.filter((r) => r !== '全部').map((r) => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
                         <label className="mb-1 block text-[11px] font-medium text-slate-700">岗位类别</label>
                         <select
                           value={newCompany.category}
@@ -1312,6 +1617,22 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                           ))}
                         </select>
                       </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-slate-700">经验要求</label>
+                        <select
+                          value={newCompany.experienceReq}
+                          onChange={(e) => setNewCompany({ ...newCompany, experienceReq: e.target.value })}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs focus:border-violet-500 focus:outline-none"
+                        >
+                          {EXPERIENCE_OPTIONS.filter((x) => x !== '全部').map((x) => (
+                            <option key={x} value={x}>
+                              {x}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5">
                       <div>
                         <label className="mb-1 block text-[11px] font-medium text-slate-700">招聘季</label>
                         <select

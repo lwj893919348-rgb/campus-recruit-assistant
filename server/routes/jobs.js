@@ -6,6 +6,7 @@ import {
   isPrivateOrLoopbackHost,
   verifyOfficialUrl,
 } from '../services/officialVerifier.js';
+import { inferCategory, inferRecruitTypeAndExp } from '../../shared/jobParser.js';
 
 function inferCityTier(city = '') {
   if (['北京', '上海', '深圳', '广州'].includes(city)) return '一线城市';
@@ -70,11 +71,20 @@ function resolveOrCreateCompany(db, payload, parsedUrl, now) {
   const cleanEntityTag =
     String(payload.entityTag || '').trim() ||
     (cleanType === '初创/融资企业' ? '初创/融资企业 · 已核对官方入口' : '用户补充企业 · 已核对官方入口');
+  const rawSocialUrl = String(payload.officialSocialUrl || payload.official_social_url || '').trim();
+  const parsedSocial = rawSocialUrl ? parseOfficialHttpUrl(rawSocialUrl) : null;
+  const cleanSocialUrl =
+    parsedSocial && !parsedSocial.error
+      ? parsedSocial.parsedUrl.href
+      : payload.recruitType === '社会招聘'
+        ? parsedUrl.href
+        : '';
+  const cleanWechat = String(payload.wechatAccount || payload.wechat_account || '').trim();
   const cleanNotes =
     String(payload.notes || '').trim() ||
     (cleanType === '初创/融资企业'
       ? '由用户自主收录的初创/融资企业官方招聘入口（建议结合天眼查核对主体）。'
-      : '由用户自主收录并校对域名的官方校招入口。');
+      : '由用户自主收录并校对域名的官方招聘入口。');
   const rootDomain = extractRootDomain(parsedUrl.hostname);
 
   const allCompanies = db.prepare('SELECT * FROM companies').all();
@@ -87,13 +97,21 @@ function resolveOrCreateCompany(db, payload, parsedUrl, now) {
   });
 
   if (company) {
-    if ((cleanLegal && !company.legal_name) || (String(payload.entityTag || '').trim() && !company.entity_tag)) {
-      db.prepare('UPDATE companies SET legal_name = COALESCE(NULLIF(legal_name, ""), ?), entity_tag = COALESCE(NULLIF(entity_tag, ""), ?), updated_at = ? WHERE id = ?').run(
-        cleanLegal,
-        cleanEntityTag,
-        now,
-        company.id,
-      );
+    if (
+      (cleanLegal && !company.legal_name) ||
+      (String(payload.entityTag || '').trim() && !company.entity_tag) ||
+      (cleanSocialUrl && !company.official_social_url) ||
+      (cleanWechat && !company.wechat_account)
+    ) {
+      db.prepare(
+        `UPDATE companies SET
+          legal_name = COALESCE(NULLIF(legal_name, ''), ?),
+          entity_tag = COALESCE(NULLIF(entity_tag, ''), ?),
+          official_social_url = COALESCE(NULLIF(official_social_url, ''), ?),
+          wechat_account = COALESCE(NULLIF(wechat_account, ''), ?),
+          updated_at = ?
+        WHERE id = ?`,
+      ).run(cleanLegal, cleanEntityTag, cleanSocialUrl, cleanWechat, now, company.id);
       company = db.prepare('SELECT * FROM companies WHERE id = ?').get(company.id);
     }
     return { company, created: false, rootDomain };
@@ -105,9 +123,9 @@ function resolveOrCreateCompany(db, payload, parsedUrl, now) {
     `
     INSERT INTO companies (
       id, name, short_name, industry, company_type, official_domain,
-      official_campus_url, search_url_template, badge_color, hq_city,
+      official_campus_url, official_social_url, wechat_account, search_url_template, badge_color, hq_city,
       legal_name, entity_tag, verification_status, last_verified_at, updated_at, notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     companyId,
@@ -117,6 +135,8 @@ function resolveOrCreateCompany(db, payload, parsedUrl, now) {
     cleanType,
     rootDomain,
     parsedUrl.href,
+    cleanSocialUrl,
+    cleanWechat,
     parsedUrl.href,
     badgeColor,
     cleanCity,
@@ -136,26 +156,33 @@ function insertUserJob(db, companyId, payload, parsedUrl, rootDomain, now) {
   const cleanCity = String(payload.city || '').trim();
   const cleanProvince = String(payload.province || '').trim() || cleanCity;
   const tier = inferCityTier(cleanCity);
-  const years =
-    Array.isArray(payload.graduationYears) && payload.graduationYears.length > 0
-      ? payload.graduationYears
-      : ['2027'];
+  const title = String(payload.title || '').trim();
+  const meta = inferRecruitTypeAndExp({
+    title,
+    seasonTag: payload.seasonTag || '',
+    recruitType: payload.recruitType || '',
+    experienceReq: payload.experienceReq || '',
+    graduationYears: payload.graduationYears,
+  });
+  const years = meta.graduationYears;
 
   db.prepare(
     `
     INSERT INTO jobs (
-      id, company_id, title, category, season_tag, graduation_years,
+      id, company_id, recruit_type, experience_req, title, category, season_tag, graduation_years,
       province, city, city_tier, official_source_url, official_domain,
       deadline, status, is_referral, salary_range, requirements_summary,
       sync_source, last_checked_at, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     jobId,
     companyId,
-    String(payload.title || '').trim(),
-    String(payload.category || '').trim() || '技术研发',
-    String(payload.seasonTag || '').trim() || '2027届秋招补录',
+    meta.recruitType,
+    meta.experienceReq,
+    title,
+    String(payload.category || '').trim() || inferCategory(title),
+    meta.seasonTag,
     JSON.stringify(years),
     cleanProvince,
     cleanCity,
@@ -166,7 +193,7 @@ function insertUserJob(db, companyId, payload, parsedUrl, rootDomain, now) {
     'open',
     payload.isReferral ? 1 : 0,
     String(payload.salaryRange || '').trim(),
-    String(payload.requirementsSummary || '').trim() || '详情请点击直达官网查看具体岗位职责与专业要求。',
+    String(payload.requirementsSummary || '').trim() || '详情请点击直达官网查看具体岗位职责与要求。',
     'user_submitted',
     now,
     now,
@@ -178,6 +205,9 @@ function insertUserJob(db, companyId, payload, parsedUrl, rootDomain, now) {
     SELECT j.*, c.name AS company_name, c.short_name AS company_short_name,
       c.industry AS company_industry, c.company_type, c.legal_name AS company_legal_name,
       c.entity_tag AS company_entity_tag, c.badge_color,
+      c.official_campus_url AS company_portal_url,
+      c.official_social_url AS company_social_url,
+      c.wechat_account AS company_wechat_account,
       c.verification_status AS company_verification_status
     FROM jobs j JOIN companies c ON c.id = j.company_id WHERE j.id = ?
   `,
@@ -205,6 +235,8 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
       industry = '',
       companyType = '',
       category = '',
+      recruitType = '',
+      experienceReq = '',
       companyId = '',
       onlyOpen = '',
       onlyReferral = '',
@@ -299,6 +331,8 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
         c.entity_tag AS company_entity_tag,
         c.badge_color,
         c.official_campus_url AS company_portal_url,
+        c.official_social_url AS company_social_url,
+        c.wechat_account AS company_wechat_account,
         c.search_url_template AS company_search_url_template,
         c.verification_status AS company_verification_status
       FROM jobs j
@@ -314,12 +348,19 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
       .all();
     const trackedMap = Object.fromEntries(trackedApps.map((a) => [a.job_id, { id: a.id, status: a.status }]));
 
-    const jobs = rows.map((row) => ({
+    let jobs = rows.map((row) => ({
       ...row,
       graduation_years: JSON.parse(row.graduation_years || '[]'),
       is_referral: Boolean(row.is_referral),
       tracked: trackedMap[row.id] || null,
     }));
+
+    if (recruitType && recruitType !== '全部') {
+      jobs = jobs.filter((item) => item.recruit_type === recruitType);
+    }
+    if (experienceReq && experienceReq !== '全部') {
+      jobs = jobs.filter((item) => item.experience_req === experienceReq);
+    }
 
     const cityFacets = db
       .prepare(
@@ -350,6 +391,14 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
       )
       .all();
 
+    const recruitTypeFacets = db
+      .prepare('SELECT recruit_type AS value, COUNT(*) AS count FROM jobs GROUP BY recruit_type ORDER BY count DESC')
+      .all();
+
+    const experienceFacets = db
+      .prepare('SELECT experience_req AS value, COUNT(*) AS count FROM jobs GROUP BY experience_req ORDER BY count DESC')
+      .all();
+
     res.json({
       total: jobs.length,
       jobs,
@@ -358,6 +407,8 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
         seasons: seasonFacets,
         categories: categoryFacets,
         companyTypes: companyTypeFacets,
+        recruitTypes: recruitTypeFacets,
+        experienceReqs: experienceFacets,
       },
     });
   });
@@ -431,9 +482,11 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
         company.id,
         {
           title: jobTitle,
-          category: body.category || '技术研发',
-          seasonTag: body.seasonTag || '2027届秋招补录',
-          graduationYears: body.graduationYears || ['2027'],
+          recruitType: body.recruitType || '',
+          experienceReq: body.experienceReq || '',
+          category: body.category || '',
+          seasonTag: body.seasonTag || '',
+          graduationYears: body.graduationYears || null,
           province: body.province || '',
           city: body.city || body.hqCity || company.hq_city || '北京',
           deadline: body.deadline || '招满即止',
@@ -467,8 +520,10 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
 
     if (q && String(q).trim()) {
       const kw = `%${String(q).trim()}%`;
-      conditions.push("(c.name LIKE ? OR c.short_name LIKE ? OR COALESCE(c.legal_name, '') LIKE ? OR COALESCE(c.entity_tag, '') LIKE ? OR c.industry LIKE ? OR c.hq_city LIKE ?)");
-      params.push(kw, kw, kw, kw, kw, kw);
+      conditions.push(
+        "(c.name LIKE ? OR c.short_name LIKE ? OR COALESCE(c.legal_name, '') LIKE ? OR COALESCE(c.entity_tag, '') LIKE ? OR COALESCE(c.wechat_account, '') LIKE ? OR c.industry LIKE ? OR c.hq_city LIKE ?)",
+      );
+      params.push(kw, kw, kw, kw, kw, kw, kw);
     }
 
     if (companyType && companyType !== '全部') {

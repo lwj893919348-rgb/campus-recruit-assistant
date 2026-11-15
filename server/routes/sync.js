@@ -128,6 +128,13 @@ export function createSyncRouter(db, options = {}) {
     if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
       return res.status(400).json({ error: '订阅源仅支持 http 或 https 协议。' });
     }
+    const hostLower = parsedUrl.hostname.toLowerCase();
+    if (hostLower === 'mp.weixin.qq.com' || hostLower.endsWith('.weixin.qq.com') || hostLower === 'weixin.qq.com') {
+      return res.status(400).json({
+        error:
+          '微信公众号文章受微信官方访问验证限制，不支持后台直接爬取。请复制公众号招聘正文到「粘贴导入 / 公众号公告解析」中一键提取岗位。',
+      });
+    }
     if (!allowPrivateHosts && isPrivateOrLoopbackHost(parsedUrl.hostname)) {
       return res.status(400).json({ error: '禁止添加内网或本地回环地址作为外部订阅源。' });
     }
@@ -206,9 +213,24 @@ export function createSyncRouter(db, options = {}) {
     res.json({ deleted: true, id });
   });
 
+  router.post('/sync/import/preview', (req, res) => {
+    const { rawText = '' } = req.body || {};
+    const companies = db.prepare('SELECT * FROM companies').all();
+    const items = parseBatchImportText(rawText, companies);
+    res.json({
+      count: items.length,
+      items,
+      warning:
+        /mp\.weixin\.qq\.com/i.test(String(rawText || '')) && items.some((it) => !it.officialUrl)
+          ? '检测到文本含微信公众号链接但缺少企业官网直投链接，请在下方预览表中补全官网投递 URL 后再确认入库。'
+          : '',
+    });
+  });
+
   router.post('/sync/import', (req, res) => {
     const { rawText = '', items = null, seasonTag = '', syncSource = 'batch_import' } = req.body || {};
-    let parsedItems = Array.isArray(items) ? items : parseBatchImportText(rawText);
+    const companies = db.prepare('SELECT * FROM companies').all();
+    let parsedItems = Array.isArray(items) ? items : parseBatchImportText(rawText, companies);
 
     if (seasonTag && String(seasonTag).trim()) {
       const overrideSeason = String(seasonTag).trim();

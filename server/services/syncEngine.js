@@ -1,6 +1,12 @@
 import crypto from 'node:crypto';
 import { upsertBuiltInCatalog } from '../db/seed.js';
 import {
+  inferCategory,
+  inferCityInfo,
+  inferRecruitTypeAndExp,
+  parseWechatAnnouncementText,
+} from '../../shared/jobParser.js';
+import {
   extractAtsTenantPrefix,
   extractRootDomain,
   findMatchingCompany,
@@ -8,72 +14,7 @@ import {
   isSharedAtsDomain,
 } from './officialVerifier.js';
 
-const CITY_PROVINCE_MAP = {
-  北京: { province: '北京', tier: '一线城市' },
-  上海: { province: '上海', tier: '一线城市' },
-  深圳: { province: '广东', tier: '一线城市' },
-  广州: { province: '广东', tier: '一线城市' },
-  杭州: { province: '浙江', tier: '新一线' },
-  成都: { province: '四川', tier: '新一线' },
-  南京: { province: '江苏', tier: '新一线' },
-  武汉: { province: '湖北', tier: '新一线' },
-  西安: { province: '陕西', tier: '新一线' },
-  苏州: { province: '江苏', tier: '新一线' },
-  长沙: { province: '湖南', tier: '新一线' },
-  重庆: { province: '重庆', tier: '新一线' },
-  合肥: { province: '安徽', tier: '新一线' },
-  宁波: { province: '浙江', tier: '新一线' },
-  青岛: { province: '山东', tier: '新一线' },
-  天津: { province: '天津', tier: '新一线' },
-  郑州: { province: '河南', tier: '新一线' },
-  东莞: { province: '广东', tier: '新一线' },
-  佛山: { province: '广东', tier: '新一线' },
-  珠海: { province: '广东', tier: '省会及重点城市' },
-  厦门: { province: '福建', tier: '省会及重点城市' },
-  宁德: { province: '福建', tier: '省会及重点城市' },
-  济南: { province: '山东', tier: '省会及重点城市' },
-  无锡: { province: '江苏', tier: '省会及重点城市' },
-  福州: { province: '福建', tier: '省会及重点城市' },
-  沈阳: { province: '辽宁', tier: '省会及重点城市' },
-  大连: { province: '辽宁', tier: '省会及重点城市' },
-  长春: { province: '吉林', tier: '省会及重点城市' },
-  哈尔滨: { province: '黑龙江', tier: '省会及重点城市' },
-  昆明: { province: '云南', tier: '省会及重点城市' },
-  南宁: { province: '广西', tier: '省会及重点城市' },
-  全国多地: { province: '全国多地', tier: '其他/海外' },
-  海外: { province: '海外', tier: '其他/海外' },
-};
-
-const KNOWN_CITY_NAMES = Object.keys(CITY_PROVINCE_MAP);
-
-export function inferCityInfo(cityInput = '', fallbackText = '') {
-  const clean = String(cityInput || '').trim();
-  if (clean && CITY_PROVINCE_MAP[clean]) {
-    return { city: clean, ...CITY_PROVINCE_MAP[clean] };
-  }
-  const combined = `${clean} ${fallbackText}`;
-  for (const cityName of KNOWN_CITY_NAMES) {
-    if (combined.includes(cityName)) {
-      return { city: cityName, ...CITY_PROVINCE_MAP[cityName] };
-    }
-  }
-  if (clean) {
-    return { city: clean, province: clean, tier: '省会及重点城市' };
-  }
-  return { city: '全国多地', province: '全国多地', tier: '其他/海外' };
-}
-
-export function inferCategory(title = '') {
-  const t = String(title);
-  if (/算法|大模型|AI|机器学习|视觉|NLP|推荐|SLAM|感知/i.test(t)) return '算法AI';
-  if (/产品|策划|交互|设计|UI|UX/i.test(t)) return '产品设计';
-  if (/运营|市场|商务|采销|品牌|营销|销售|内容/i.test(t)) return '运营市场';
-  if (/嵌入式|硬件|IC|芯片|射频|天线|机械|电气|工艺|结构|半导体|器件/i.test(t)) return '硬件工程';
-  if (/金融|风控|银行|投行|量化|证券|审计/i.test(t)) return '金融风控';
-  if (/供应链|制造|电池|物流|质量|生产/i.test(t)) return '供应链制造';
-  if (/管培|财务|法务|人力|职能|综合/i.test(t)) return '职能管培';
-  return '技术研发';
-}
+export { inferCategory, inferCityInfo, parseWechatAnnouncementText };
 
 function stripTags(str = '') {
   return String(str)
@@ -257,34 +198,37 @@ function findOrCreateCompany(db, item, defaultCompanyId, rootDomain, allCompanie
     }
   }
 
-  const resolvedName = cleanName || rootDomain || '高校校招公告单位';
+  const resolvedName = cleanName || rootDomain || '招聘公告单位';
   const tenantKey = extractAtsTenantPrefix(item.officialUrl) || rootDomain;
   const companyId = `comp-${crypto.createHash('md5').update(`${resolvedName}:${tenantKey}`).digest('hex').slice(0, 8)}`;
   const now = new Date().toISOString();
+  const isSocial = item.recruitType === '社会招聘';
 
   db.prepare(
     `
     INSERT INTO companies (
       id, name, short_name, industry, company_type, official_domain,
-      official_campus_url, search_url_template, badge_color, hq_city,
+      official_campus_url, official_social_url, wechat_account, search_url_template, badge_color, hq_city,
       verification_status, last_verified_at, updated_at, notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'verified_official', ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'verified_official', ?, ?, ?)
     ON CONFLICT(id) DO NOTHING
   `,
   ).run(
     companyId,
     resolvedName,
     resolvedName.slice(0, 4),
-    '校招同步收录',
-    '优质企业',
+    item.industry || '综合同步收录',
+    item.companyType || '优质企业',
     rootDomain,
     item.officialUrl,
+    isSocial ? item.officialUrl : '',
+    item.wechatAccount || '',
     '',
     '#334155',
     item.city || '全国多地',
     now,
     now,
-    '由订阅源或批量导入自动收录的企业官方校招入口。',
+    '由订阅源、公众号公告解析或批量导入自动收录的企业官方招聘入口。',
   );
 
   const created = db.prepare('SELECT * FROM companies WHERE id = ?').get(companyId);
@@ -307,17 +251,17 @@ export function upsertImportedItems(
   const findByExt = db.prepare('SELECT id FROM jobs WHERE external_id = ? LIMIT 1');
   const insertJob = db.prepare(`
     INSERT INTO jobs (
-      id, company_id, external_id, title, category, season_tag, graduation_years,
+      id, company_id, external_id, recruit_type, experience_req, title, category, season_tag, graduation_years,
       province, city, city_tier, official_source_url, official_domain,
       deadline, status, is_referral, salary_range, requirements_summary,
       sync_source, last_checked_at, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const updateJob = db.prepare(`
     UPDATE jobs SET
-      title = ?, category = ?, season_tag = ?, graduation_years = ?,
+      recruit_type = ?, experience_req = ?, title = ?, category = ?, season_tag = ?, graduation_years = ?,
       province = ?, city = ?, city_tier = ?, official_source_url = ?,
-      deadline = ?, requirements_summary = ?, last_checked_at = ?
+      deadline = ?, salary_range = COALESCE(NULLIF(?, ''), salary_range), requirements_summary = ?, last_checked_at = ?
     WHERE id = ?
   `);
 
@@ -343,10 +287,18 @@ export function upsertImportedItems(
     const cityInfo = inferCityInfo(item.city, `${item.title} ${item.summary || ''}`);
     const province = String(item.province || '').trim() || cityInfo.province;
     const category = String(item.category || '').trim() || inferCategory(item.title);
-    const seasonTag = String(item.seasonTag || '').trim() || '2027届秋招补录';
-    const gradYears = Array.isArray(item.graduationYears) && item.graduationYears.length > 0 ? item.graduationYears : ['2027'];
+    const meta = inferRecruitTypeAndExp({
+      title: item.title,
+      seasonTag: item.seasonTag || '',
+      recruitType: item.recruitType || '',
+      experienceReq: item.experienceReq || '',
+      graduationYears: item.graduationYears,
+      contextText: item.requirementsSummary || item.summary || '',
+    });
     const deadline = String(item.deadline || '').trim() || '招满即止';
-    const summary = String(item.summary || '').trim() || '来自官方订阅源同步的校招岗位信息，请点击直达官网查看详情。';
+    const summary =
+      String(item.requirementsSummary || item.summary || '').trim() ||
+      '来自官方订阅源或公告导入的岗位信息，请点击直达官网查看详情。';
 
     const extKey =
       item.externalId
@@ -356,15 +308,18 @@ export function upsertImportedItems(
     const existing = findByExt.get(extKey);
     if (existing) {
       updateJob.run(
+        meta.recruitType,
+        meta.experienceReq,
         item.title.trim(),
         category,
-        seasonTag,
-        JSON.stringify(gradYears),
+        meta.seasonTag,
+        JSON.stringify(meta.graduationYears),
         province,
         cityInfo.city,
         cityInfo.tier,
         item.officialUrl.trim(),
         deadline,
+        item.salaryRange || '',
         summary,
         now,
         existing.id,
@@ -376,10 +331,12 @@ export function upsertImportedItems(
         id,
         company.id,
         extKey,
+        meta.recruitType,
+        meta.experienceReq,
         item.title.trim(),
         category,
-        seasonTag,
-        JSON.stringify(gradYears),
+        meta.seasonTag,
+        JSON.stringify(meta.graduationYears),
         province,
         cityInfo.city,
         cityInfo.tier,
@@ -620,19 +577,37 @@ export async function runFullSync(
 }
 
 /**
- * Parses either JSON array or multi-line CSV/TSV/pipe-delimited job lists pasted by a student.
- * Format for text lines: 公司名称, 岗位名称, 城市, 官网链接, [截止日期], [招聘季]
+ * Parses JSON array/feed, multi-line CSV/TSV/pipe-delimited job lists,
+ * OR pasted WeChat Official Account recruitment announcements.
  */
-export function parseBatchImportText(rawText = '') {
+export function parseBatchImportText(rawText = '', knownCompanies = []) {
   const trimmed = String(rawText || '').trim();
   if (!trimmed) return [];
 
   if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
     try {
       const parsed = JSON.parse(trimmed);
-      return parseJsonFeed(parsed);
+      return parseJsonFeed(parsed).map((it) => {
+        const meta = inferRecruitTypeAndExp({
+          title: it.title,
+          seasonTag: it.seasonTag || '',
+          recruitType: it.recruitType || '',
+          experienceReq: it.experienceReq || '',
+          graduationYears: it.graduationYears,
+        });
+        return {
+          ...it,
+          selected: true,
+          category: it.category || inferCategory(it.title),
+          recruitType: meta.recruitType,
+          experienceReq: meta.experienceReq,
+          seasonTag: meta.seasonTag,
+          graduationYears: meta.graduationYears,
+          urlSource: 'json',
+        };
+      });
     } catch {
-      // fall through to line parser
+      // fall through to line / announcement parser
     }
   }
 
@@ -643,7 +618,6 @@ export function parseBatchImportText(rawText = '') {
 
   const items = [];
   for (const line of lines) {
-    // Skip common header rows
     if (/^(公司|company)/i.test(line) && /(岗位|title|职位)/i.test(line)) continue;
 
     const parts = line
@@ -653,7 +627,6 @@ export function parseBatchImportText(rawText = '') {
 
     if (parts.length < 3) continue;
 
-    // Locate URL field anywhere in parts
     const urlIdx = parts.findIndex((p) => /^https?:\/\//i.test(p));
     if (urlIdx === -1) continue;
 
@@ -663,19 +636,31 @@ export function parseBatchImportText(rawText = '') {
     const title = nonUrl[1] || '';
     const city = nonUrl[2] || '全国多地';
     const deadline = nonUrl[3] || '招满即止';
-    const seasonTag = nonUrl[4] || '2027届秋招补录';
+    const seasonTag = nonUrl[4] || '';
 
     if (companyName && title) {
+      const meta = inferRecruitTypeAndExp({ title, seasonTag });
       items.push({
+        selected: true,
         companyName,
         title,
+        category: inferCategory(title),
+        recruitType: meta.recruitType,
+        experienceReq: meta.experienceReq,
+        seasonTag: meta.seasonTag,
+        graduationYears: meta.graduationYears,
         city,
         officialUrl,
         deadline,
-        seasonTag,
+        urlSource: 'csv',
       });
     }
   }
 
-  return items;
+  if (items.length > 0 && items.length >= Math.floor(lines.length / 2)) {
+    return items;
+  }
+
+  const wechatItems = parseWechatAnnouncementText(trimmed, knownCompanies);
+  return wechatItems.length > 0 ? wechatItems : items;
 }

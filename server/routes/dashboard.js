@@ -7,6 +7,14 @@ export function createDashboardRouter(db) {
   router.get('/dashboard', (req, res) => {
     const totalCompanies = db.prepare('SELECT COUNT(*) AS cnt FROM companies').get().cnt;
     const totalJobs = db.prepare("SELECT COUNT(*) AS cnt FROM jobs WHERE status IN ('open', 'closing_soon')").get().cnt;
+    const recruitTypeRows = db
+      .prepare("SELECT recruit_type, COUNT(*) AS cnt FROM jobs WHERE status IN ('open', 'closing_soon') GROUP BY recruit_type")
+      .all();
+    const recruitTypeCounts = { 校园招聘: 0, 社会招聘: 0, 实习兼职: 0 };
+    for (const r of recruitTypeRows) {
+      recruitTypeCounts[r.recruit_type] = r.cnt;
+    }
+    const categoryCount = db.prepare("SELECT COUNT(DISTINCT category) AS cnt FROM jobs WHERE status IN ('open', 'closing_soon')").get().cnt;
     const totalResumes = db.prepare('SELECT COUNT(*) AS cnt FROM resumes').get().cnt;
     const defaultResume = db
       .prepare('SELECT id, title, template_id, updated_at FROM resumes ORDER BY is_default DESC, updated_at DESC LIMIT 1')
@@ -83,6 +91,8 @@ export function createDashboardRouter(db) {
       summary: {
         totalCompanies,
         totalOpenJobs: totalJobs,
+        recruitTypeCounts,
+        categoryCount,
         totalResumes,
         totalApplications,
         activeAppliedCount,

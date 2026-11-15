@@ -76,6 +76,18 @@ export const REGION_GROUPS = [
   { id: '其他/海外', label: '全国多地/海外', cities: ['全国多地', '海外'] },
 ];
 
+export const RECRUIT_TYPE_OPTIONS = ['全部', '校园招聘', '社会招聘', '实习兼职'];
+
+export const EXPERIENCE_OPTIONS = [
+  '全部',
+  '应届毕业生',
+  '在校实习生',
+  '不限/1年以内',
+  '1-3年',
+  '3-5年',
+  '5年以上',
+];
+
 export const SEASON_OPTIONS = [
   '全部',
   '2027届秋招',
@@ -84,9 +96,12 @@ export const SEASON_OPTIONS = [
   '2026届春招补录',
   '2028届暑期实习',
   '日常实习',
+  '社招常年热招',
+  '2026-2027社招急聘',
+  '高阶专家/资深社招',
 ];
 
-export const GRAD_YEAR_OPTIONS = ['全部', '2026', '2027', '2028'];
+export const GRAD_YEAR_OPTIONS = ['全部', '2026', '2027', '2028', '社招不限'];
 
 export const COMPANY_TYPE_OPTIONS = [
   '全部',
@@ -118,11 +133,19 @@ export const JOB_CATEGORY_OPTIONS = [
   '全部',
   '技术研发',
   '算法AI',
+  '测试运维',
+  '数据商业分析',
   '产品设计',
   '运营市场',
+  '销售商务',
   '硬件工程',
   '金融风控',
   '供应链制造',
+  '新能源化工',
+  '生物医药',
+  '财务审计',
+  '法务合规',
+  '人力行政',
   '职能管培',
 ];
 
@@ -163,7 +186,7 @@ export const RESUME_THEME_COLORS = [
 
 export const RESUME_SECTION_LABELS = {
   education: '教育背景',
-  internship: '实习经历',
+  internship: '工作与实习经历',
   projects: '项目经历',
   skills: '专业技能',
   campus: '校园与科研经历',

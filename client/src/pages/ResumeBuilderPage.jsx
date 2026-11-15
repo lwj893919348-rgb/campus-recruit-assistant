@@ -686,9 +686,9 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
               </div>
             </AccordionPanel>
 
-            {/* 3. Internship */}
+            {/* 3. Work & Internship */}
             <AccordionPanel
-              title={`实习经历 (${(content.internship || []).length})`}
+              title={`工作与实习经历 (${(content.internship || []).length})`}
               isOpen={openEditorSection === 'internship'}
               onToggle={() => setOpenEditorSection(openEditorSection === 'internship' ? '' : 'internship')}
             >
@@ -698,13 +698,13 @@ export function ResumeBuilderPage({ activeResumeIdFromNav, onToast, onResumesCha
                   id: '',
                   company: '',
                   role: '',
-                  period: '2026.06 - 2026.09',
+                  period: '2024.06 - 至今',
                   city: '',
                   bullets: [''],
                 }}
                 primaryLabel="公司及部门"
                 primaryKey="company"
-                secondaryLabel="实习岗位"
+                secondaryLabel="担任岗位"
                 secondaryKey="role"
                 showCity
                 onChange={(next) => updateContent('internship', next)}

@@ -145,6 +145,10 @@ export const api = {
     IS_STATIC_MODE
       ? localEngine.batchImportJobs(data)
       : request('/api/sync/import', { method: 'POST', body: JSON.stringify(data) }),
+  previewBatchImport: (rawText) =>
+    IS_STATIC_MODE
+      ? localEngine.previewBatchImport(rawText)
+      : request('/api/sync/import/preview', { method: 'POST', body: JSON.stringify({ rawText }) }),
 
   exportPersonalBackup: () => localEngine.exportPersonalBackup(),
   importPersonalBackup: (rawText) => localEngine.importPersonalBackup(rawText),

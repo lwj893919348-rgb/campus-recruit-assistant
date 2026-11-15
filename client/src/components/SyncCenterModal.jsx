@@ -41,6 +41,16 @@ const TRIGGER_LABELS = {
 const SAMPLE_BATCH_TEXT = `腾讯, 2027暑期实习-AI应用开发工程师, 深圳, https://careers.tencent.com/campus, 2027-05-30, 2027届春招提前批
 米哈游, 游戏客户端开发工程师（校招）, 上海, https://jobs.mihoyo.com, 2027-04-30, 2027届秋招补录`;
 
+const SAMPLE_WECHAT_ANNOUNCEMENT = `【比亚迪集团2026-2027社会招聘与急聘公告】
+公众号：比亚迪招聘
+一、社会招聘岗位
+1、高级BMS嵌入式软件工程师 | 深圳 | 3-5年 | 30-45K | https://job.byd.com
+2、新能源汽车供应链采购经理 | 西安 | 3-5年 | 25-38K | https://job.byd.com
+3、动力电池电芯工艺工程师（新能源化工）| 深圳 | 1-3年 | 22-35K | https://job.byd.com
+二、校园招聘补录岗位
+4、自动驾驶规划控制算法工程师（2027届校招）| 深圳 | 应届毕业生 | https://job.byd.com
+截止时间：2027-03-31`;
+
 export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, companies = [] }) {
   const [activeTab, setActiveTab] = useState('sources');
   const [statusData, setStatusData] = useState(null);
@@ -57,6 +67,9 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
 
   const [importText, setImportText] = useState('');
   const [importing, setImporting] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewItems, setPreviewItems] = useState([]);
+  const [previewWarning, setPreviewWarning] = useState('');
   const [importResult, setImportResult] = useState(null);
 
   async function loadStatus() {
@@ -139,19 +152,52 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
     }
   }
 
+  async function handlePreviewParse() {
+    if (!importText.trim()) {
+      onToast('error', '请先粘贴企业公众号招聘推文正文或清单文本。');
+      return;
+    }
+    setPreviewing(true);
+    setImportResult(null);
+    try {
+      const res = await api.previewBatchImport(importText);
+      setPreviewItems(res.items || []);
+      setPreviewWarning(res.warning || '');
+      if (!res.items || res.items.length === 0) {
+        onToast('error', '未识别出结构化岗位，建议每行包含“岗位名 | 城市 | 经验 | 官网链接”或使用示例格式。');
+      } else {
+        onToast('success', `智能解析成功：识别出 ${res.items.length} 个候选岗位，请核对后入库。`);
+      }
+    } catch (err) {
+      onToast('error', err.message);
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
   async function handleBatchImport(e) {
     e.preventDefault();
-    if (!importText.trim()) {
-      onToast('error', '请先粘贴校招清单文本或 JSON 数组。');
+    const checkedItems = previewItems.filter((it) => it.selected && it.officialUrl);
+    if (previewItems.length > 0 && checkedItems.length === 0) {
+      onToast('error', '请至少勾选 1 条已填写企业官网投递链接的岗位再入库。');
+      return;
+    }
+    if (previewItems.length === 0 && !importText.trim()) {
+      onToast('error', '请先粘贴公众号招聘公告正文、清单文本或 JSON 数组。');
       return;
     }
     setImporting(true);
     try {
-      const res = await api.batchImportJobs({ rawText: importText });
+      const res =
+        checkedItems.length > 0
+          ? await api.batchImportJobs({ items: checkedItems })
+          : await api.batchImportJobs({ rawText: importText });
       setImportResult(res);
+      setPreviewItems([]);
+      setPreviewWarning('');
       onToast(
         'success',
-        `批量导入完成：识别 ${res.parsedCount} 条，新增 ${res.added} 条，更新 ${res.updated} 条！`,
+        `入库完成：识别 ${res.parsedCount} 条，新增 ${res.added} 条，更新 ${res.updated} 条！`,
       );
       await loadStatus();
       onSynced?.();
@@ -241,7 +287,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
               }`}
             >
               <Upload className="h-3.5 w-3.5" />
-              批量文本 / JSON 导入
+              公众号公告解析 / 批量导入
             </button>
           </div>
 
@@ -328,6 +374,18 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                         placeholder="https://..."
                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-mono text-xs focus:border-blue-500 focus:outline-none"
                       />
+                      {/weixin\.qq\.com/i.test(sourceForm.url) && (
+                        <div className="mt-1.5 flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900">
+                          <span>微信公众号文章不支持后台直爬，建议复制推送正文智能提取岗位。</span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('import')}
+                            className="shrink-0 font-semibold text-blue-700 hover:underline"
+                          >
+                            切到公众号解析 →
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="mb-1 block text-xs font-medium text-slate-700">默认归属企业（可选）</label>
@@ -483,34 +541,154 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
             </>
           ) : (
             <form onSubmit={handleBatchImport} className="space-y-3.5">
-              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 text-xs leading-relaxed text-slate-600">
-                <div className="font-semibold text-slate-800">支持将学校就业群/师兄内推群/Excel表格导出的校招清单一键入库：</div>
-                <ul className="mt-1.5 list-inside list-disc space-y-1 text-[11px]">
+              <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-3.5 text-xs leading-relaxed text-slate-700">
+                <div className="font-semibold text-emerald-900">
+                  合规微信公众号招聘公告解析 & 全渠道清单一键入库：
+                </div>
+                <ul className="mt-1.5 list-inside list-disc space-y-1 text-[11px] text-slate-600">
                   <li>
-                    每行格式：<code className="rounded bg-white px-1.5 py-0.5 text-slate-800">公司名称, 岗位名称, 城市, https://官网投递链接, [截止日期], [招聘季]</code>（逗号、竖线或 Tab 分隔均可）
+                    <strong>公众号推文直贴解析</strong>：在微信打开企业官方招聘公众号（如「比亚迪招聘」「腾讯招聘」），直接复制推送文章中的岗位正文粘贴到下方，点击「智能解析预览」自动提取校招/社招通道、16大职能分类、工作城市与经验要求。
                   </li>
-                  <li>也支持直接粘贴标准 JSON 数组，系统会自动校验链接安全性并增量去重（同链接不会重复创建）。</li>
+                  <li>
+                    <strong>结构化清单 / JSON</strong>：支持{' '}
+                    <code className="rounded bg-white px-1.5 py-0.5 text-slate-800">
+                      公司名称, 岗位名称, 城市, https://官网投递链接, [截止日期], [招聘季]
+                    </code>{' '}
+                    或标准 JSON 数组，自动去重校验域名。
+                  </li>
                 </ul>
               </div>
 
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-700">粘贴待入库清单</label>
-                <button
-                  type="button"
-                  onClick={() => setImportText(SAMPLE_BATCH_TEXT)}
-                  className="text-xs font-medium text-blue-600 hover:underline"
-                >
-                  填入示例格式（2条测试数据）
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="text-xs font-semibold text-slate-700">粘贴公众号招聘正文或结构化清单</label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImportText(SAMPLE_WECHAT_ANNOUNCEMENT);
+                      setPreviewItems([]);
+                      setImportResult(null);
+                    }}
+                    className="text-xs font-semibold text-emerald-700 hover:underline"
+                  >
+                    填入公众号公告示例（社招+校招）
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImportText(SAMPLE_BATCH_TEXT);
+                      setPreviewItems([]);
+                      setImportResult(null);
+                    }}
+                    className="text-xs font-medium text-blue-600 hover:underline"
+                  >
+                    填入 CSV 清单示例
+                  </button>
+                </div>
               </div>
 
               <textarea
                 rows={7}
                 value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-                placeholder="例如：&#10;字节跳动, 后端开发工程师（补录）, 北京, https://jobs.bytedance.com/campus, 2027-05-15, 2027届春招补录"
+                onChange={(e) => {
+                  setImportText(e.target.value);
+                  if (previewItems.length > 0) setPreviewItems([]);
+                }}
+                placeholder="直接粘贴企业公众号文章中的招聘正文段落，例如：&#10;【某某公司2026-2027社招公告】&#10;1、资深财务审计经理 | 上海 | 3-5年 | 35-50K | https://careers.example.com"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50/30 p-3 font-mono text-xs text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none"
               />
+
+              {previewWarning && (
+                <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <span>{previewWarning}</span>
+                </div>
+              )}
+
+              {previewItems.length > 0 && (
+                <div className="space-y-2 rounded-xl border border-blue-200 bg-blue-50/30 p-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-slate-800">
+                      解析预览列表（识别 {previewItems.length} 条，已勾选{' '}
+                      {previewItems.filter((it) => it.selected && it.officialUrl).length} 条可入库）
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewItems([])}
+                      className="text-[11px] text-slate-500 hover:underline"
+                    >
+                      清空预览
+                    </button>
+                  </div>
+                  <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                    {previewItems.map((item, idx) => (
+                      <div
+                        key={`${item.companyName}-${item.title}-${idx}`}
+                        className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2.5 text-xs sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(item.selected)}
+                            onChange={(e) =>
+                              setPreviewItems((prev) =>
+                                prev.map((row, i) => (i === idx ? { ...row, selected: e.target.checked } : row)),
+                              )
+                            }
+                            className="mt-0.5 rounded border-slate-300 text-blue-600"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-bold text-slate-900">{item.companyName}</span>
+                              <span className="font-semibold text-slate-800">· {item.title}</span>
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                                  item.recruitType === '社会招聘'
+                                    ? 'bg-violet-50 text-violet-700'
+                                    : item.recruitType === '实习兼职'
+                                      ? 'bg-amber-50 text-amber-800'
+                                      : 'bg-blue-50 text-blue-700'
+                                }`}
+                              >
+                                {item.recruitType}
+                              </span>
+                              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">
+                                {item.category}
+                              </span>
+                              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">
+                                {item.city} · {item.experienceReq}
+                              </span>
+                            </div>
+                            <div className="mt-1.5 flex items-center gap-2">
+                              <span className="shrink-0 text-[11px] text-slate-500">投递官网：</span>
+                              <input
+                                type="url"
+                                value={item.officialUrl || ''}
+                                onChange={(e) => {
+                                  const nextUrl = e.target.value;
+                                  setPreviewItems((prev) =>
+                                    prev.map((row, i) =>
+                                      i === idx
+                                        ? { ...row, officialUrl: nextUrl, selected: Boolean(nextUrl.trim()) }
+                                        : row,
+                                    ),
+                                  );
+                                }}
+                                placeholder="缺少官网投递 URL，请补充 https://..."
+                                className={`w-full rounded border px-2 py-0.5 font-mono text-[11px] focus:outline-none ${
+                                  item.officialUrl
+                                    ? 'border-slate-200 bg-slate-50 text-slate-700'
+                                    : 'border-rose-300 bg-rose-50 text-rose-800'
+                                }`}
+                              />
+                            </div>
+                          </div>
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {importResult && (
                 <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
@@ -522,19 +700,33 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
                 </div>
               )}
 
-              <div className="flex items-center justify-between pt-1">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                 <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
                   <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                  自动拦截内网地址与非 http/https 链接
+                  拒绝微信文章直爬与内网链接，仅留存企业官网投递入口
                 </span>
-                <button
-                  type="submit"
-                  disabled={importing}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-                >
-                  <Upload className="h-3.5 w-3.5" />
-                  {importing ? '正在解析去重入库...' : '解析并增量入库'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={previewing}
+                    onClick={handlePreviewParse}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                  >
+                    {previewing ? '解析中...' : '智能解析预览'}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={importing}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    {importing
+                      ? '正在解析去重入库...'
+                      : previewItems.length > 0
+                        ? `确认入库 (${previewItems.filter((it) => it.selected && it.officialUrl).length} 条)`
+                        : '直接解析并增量入库'}
+                  </button>
+                </div>
               </div>
             </form>
           )}

@@ -22,6 +22,10 @@ import {
   parseJsonLdJobPostings,
   parseBatchImportText,
 } from '../services/syncEngine.js';
+import {
+  ALL_JOB_CATEGORIES,
+  parseWechatAnnouncementText,
+} from '../../shared/jobParser.js';
 
 function invokeApp(app, method, url, body = null) {
   return new Promise((resolve, reject) => {
@@ -178,7 +182,7 @@ test('Resumes CRUD, duplicate, default switching, and last-resume protection', a
   try {
     const listRes = await invokeApp(app, 'GET', '/api/resumes');
     const { resumes } = listRes.data;
-    assert.equal(resumes.length, 2);
+    assert.equal(resumes.length, 3);
 
     const dupRes = await invokeApp(app, 'POST', `/api/resumes/${resumes[0].id}/duplicate`, {
       title: '字节跳动专属简历',
@@ -195,8 +199,9 @@ test('Resumes CRUD, duplicate, default switching, and last-resume protection', a
     assert.equal(updRes.data.resume.template_id, 'modern-dual');
     assert.equal(updRes.data.resume.is_default, true);
 
-    await invokeApp(app, 'DELETE', `/api/resumes/${resumes[0].id}`);
-    await invokeApp(app, 'DELETE', `/api/resumes/${resumes[1].id}`);
+    for (const r of resumes) {
+      await invokeApp(app, 'DELETE', `/api/resumes/${r.id}`);
+    }
     const blockDel = await invokeApp(app, 'DELETE', `/api/resumes/${cloned.id}`);
     assert.equal(blockDel.status, 400);
   } finally {
@@ -633,9 +638,9 @@ test('Shared ATS domain isolation, POST /api/companies, and batch import isolati
   }
 });
 
-test('Expanded built-in startup catalog satisfies count, entity metadata, and domain alignment', () => {
-  assert.ok(OFFICIAL_COMPANIES.length >= 189, `Expected >= 189 companies, got ${OFFICIAL_COMPANIES.length}`);
-  assert.ok(OFFICIAL_JOBS.length >= 270, `Expected >= 270 jobs, got ${OFFICIAL_JOBS.length}`);
+test('Expanded built-in all-stage catalog satisfies 16-category counts, wechat metadata, and domain alignment', () => {
+  assert.ok(OFFICIAL_COMPANIES.length >= 198, `Expected >= 198 companies, got ${OFFICIAL_COMPANIES.length}`);
+  assert.ok(OFFICIAL_JOBS.length >= 480, `Expected >= 480 jobs, got ${OFFICIAL_JOBS.length}`);
 
   const startups = OFFICIAL_COMPANIES.filter((c) => c.company_type === '初创/融资企业');
   assert.ok(startups.length >= 31, `Expected >= 31 verified startups, got ${startups.length}`);
@@ -659,6 +664,9 @@ test('Expanded built-in startup catalog satisfies count, entity metadata, and do
     assert.ok(startupJobs.length >= 1, `Startup ${startup.id} should have at least 1 built-in job`);
   }
 
+  const catCounts = new Map(ALL_JOB_CATEGORIES.map((c) => [c, 0]));
+  const recruitCounts = { 校园招聘: 0, 社会招聘: 0, 实习兼职: 0 };
+
   for (const job of OFFICIAL_JOBS) {
     assert.ok(companyMap.has(job.company_id), `Job ${job.id} references unknown company ${job.company_id}`);
     const jobHost = new URL(job.official_source_url).hostname;
@@ -667,5 +675,79 @@ test('Expanded built-in startup catalog satisfies count, entity metadata, and do
       true,
       `Job ${job.id} URL ${job.official_source_url} mismatches domain ${job.official_domain}`,
     );
+    catCounts.set(job.category, (catCounts.get(job.category) || 0) + 1);
+    recruitCounts[job.recruit_type] = (recruitCounts[job.recruit_type] || 0) + 1;
+  }
+
+  for (const category of ALL_JOB_CATEGORIES) {
+    assert.ok(
+      catCounts.get(category) >= 15,
+      `Category "${category}" expected >= 15 jobs, got ${catCounts.get(category)}`,
+    );
+  }
+  assert.ok(recruitCounts['校园招聘'] >= 260, `Expected >= 260 campus jobs, got ${recruitCounts['校园招聘']}`);
+  assert.ok(recruitCounts['社会招聘'] >= 150, `Expected >= 150 social jobs, got ${recruitCounts['社会招聘']}`);
+  assert.ok(recruitCounts['实习兼职'] >= 50, `Expected >= 50 intern jobs, got ${recruitCounts['实习兼职']}`);
+});
+
+test('All-stage filters, WeChat announcement preview/import, and mp.weixin.qq.com feed block', async () => {
+  const db = createDatabase(':memory:', { seed: true });
+  const app = createApp(db);
+
+  try {
+    // 1. recruitType & experienceReq API filters + facets
+    const socialRes = await invokeApp(app, 'GET', '/api/jobs?recruitType=%E7%A4%BE%E4%BC%9A%E6%8B%9B%E8%81%98&pageSize=20');
+    assert.equal(socialRes.status, 200);
+    assert.ok(socialRes.data.total >= 150);
+    assert.ok(socialRes.data.jobs.every((j) => j.recruit_type === '社会招聘'));
+    assert.ok(Array.isArray(socialRes.data.facets.recruitTypes));
+    assert.ok(Array.isArray(socialRes.data.facets.experienceReqs));
+
+    const auditRes = await invokeApp(
+      app,
+      'GET',
+      '/api/jobs?category=%E8%B4%A2%E5%8A%A1%E5%AE%A1%E8%AE%A1&experienceReq=3-5%E5%B9%B4',
+    );
+    assert.equal(auditRes.status, 200);
+    assert.ok(auditRes.data.total >= 5);
+    assert.ok(
+      auditRes.data.jobs.every((j) => j.category === '财务审计' && j.experience_req === '3-5年'),
+    );
+    assert.ok(auditRes.data.jobs.some((j) => j.company_wechat_account));
+
+    // 2. Dashboard summary recruitTypeCounts & categoryCount
+    const dashRes = await invokeApp(app, 'GET', '/api/dashboard');
+    assert.equal(dashRes.status, 200);
+    assert.ok(dashRes.data.summary.recruitTypeCounts);
+    assert.ok(dashRes.data.summary.categoryCount >= 16);
+
+    // 3. WeChat Official Account announcement parser (pure + preview endpoint + import)
+    const sampleWechatText = `【腾讯招聘】2026 社招+校招联合专场：
+1. 资深云原生后台开发工程师（3-5年｜深圳）官网投递：https://join.qq.com/post-1001
+2. 法务合规专家（3-5年｜深圳）
+【德勤招聘】财务审计春季专项：
+- 审计经理（3-5年｜上海）官网：https://www.deloitte.com/cn/zh/cn-careers.html`;
+
+    const parsedDirect = parseWechatAnnouncementText(sampleWechatText, OFFICIAL_COMPANIES);
+    assert.ok(parsedDirect.length >= 3);
+
+    const previewRes = await invokeApp(app, 'POST', '/api/sync/import/preview', {
+      rawText: sampleWechatText,
+    });
+    assert.equal(previewRes.status, 200);
+    assert.ok(previewRes.data.items.length >= 3);
+    assert.ok(previewRes.data.items.some((item) => item.companyName.includes('腾讯')));
+    assert.ok(previewRes.data.items.some((item) => item.category === '财务审计'));
+
+    // 4. Sync source URL blocks mp.weixin.qq.com to avoid fragile/blocked scraping
+    const blockRes = await invokeApp(app, 'POST', '/api/sync/sources', {
+      name: '某公众号推文直连',
+      source_type: 'html_links',
+      url: 'https://mp.weixin.qq.com/s/abcdef123456',
+    });
+    assert.equal(blockRes.status, 400);
+    assert.match(blockRes.data.error, /微信|粘贴|正文/);
+  } finally {
+    db.close();
   }
 });
