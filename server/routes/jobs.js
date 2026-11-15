@@ -9,7 +9,10 @@ import {
 function inferCityTier(city = '') {
   if (['北京', '上海', '深圳', '广州'].includes(city)) return '一线城市';
   if (
-    ['杭州', '成都', '南京', '武汉', '西安', '苏州', '长沙', '重庆', '合肥', '天津', '郑州', '东莞', '佛山', '青岛', '宁波'].includes(
+    [
+      '杭州', '成都', '南京', '武汉', '西安', '苏州', '长沙', '重庆', '合肥', '天津', '郑州', '东莞', '佛山', '青岛', '宁波',
+      '沈阳', '无锡', '昆明', '福州',
+    ].includes(
       city,
     )
   ) {
@@ -45,9 +48,9 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
     if (q.trim()) {
       const pattern = `%${q.trim()}%`;
       conditions.push(
-        '(j.title LIKE ? OR j.requirements_summary LIKE ? OR c.name LIKE ? OR c.short_name LIKE ? OR j.city LIKE ? OR j.category LIKE ?)',
+        "(j.title LIKE ? OR j.requirements_summary LIKE ? OR c.name LIKE ? OR c.short_name LIKE ? OR COALESCE(c.legal_name, '') LIKE ? OR COALESCE(c.entity_tag, '') LIKE ? OR j.city LIKE ? OR j.category LIKE ?)",
       );
-      params.push(pattern, pattern, pattern, pattern, pattern, pattern);
+      params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern);
     }
 
     const cityList = String(cities)
@@ -123,6 +126,8 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
         c.short_name AS company_short_name,
         c.industry AS company_industry,
         c.company_type,
+        c.legal_name AS company_legal_name,
+        c.entity_tag AS company_entity_tag,
         c.badge_color,
         c.official_campus_url AS company_portal_url,
         c.search_url_template AS company_search_url_template,
@@ -297,7 +302,8 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
       .prepare(
         `
       SELECT j.*, c.name AS company_name, c.short_name AS company_short_name,
-        c.industry AS company_industry, c.company_type, c.badge_color,
+        c.industry AS company_industry, c.company_type, c.legal_name AS company_legal_name,
+        c.entity_tag AS company_entity_tag, c.badge_color,
         c.verification_status AS company_verification_status
       FROM jobs j JOIN companies c ON c.id = j.company_id WHERE j.id = ?
     `,
@@ -318,8 +324,8 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
 
     if (q && String(q).trim()) {
       const kw = `%${String(q).trim()}%`;
-      conditions.push('(c.name LIKE ? OR c.short_name LIKE ? OR c.industry LIKE ? OR c.hq_city LIKE ?)');
-      params.push(kw, kw, kw, kw);
+      conditions.push("(c.name LIKE ? OR c.short_name LIKE ? OR COALESCE(c.legal_name, '') LIKE ? OR COALESCE(c.entity_tag, '') LIKE ? OR c.industry LIKE ? OR c.hq_city LIKE ?)");
+      params.push(kw, kw, kw, kw, kw, kw);
     }
 
     if (companyType && companyType !== '全部') {

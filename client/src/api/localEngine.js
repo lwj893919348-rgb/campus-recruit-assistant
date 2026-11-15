@@ -15,7 +15,7 @@ const MULTI_PART_TLDS = ['com.cn', 'net.cn', 'org.cn', 'gov.cn', 'edu.cn', 'co.u
 
 const FIRST_TIER = new Set(['北京', '上海', '深圳', '广州']);
 const NEW_FIRST_TIER = new Set([
-  '杭州', '成都', '南京', '武汉', '西安', '苏州', '长沙', '重庆', '合肥', '天津', '郑州', '东莞', '佛山', '青岛', '宁波',
+  '杭州', '成都', '南京', '武汉', '西安', '苏州', '长沙', '重庆', '合肥', '天津', '郑州', '东莞', '佛山', '青岛', '宁波', '沈阳', '无锡', '昆明', '福州',
 ]);
 
 let catalogPromise = null;
@@ -404,6 +404,8 @@ export const localEngine = {
         company_short_name: c.short_name || '',
         company_industry: c.industry || '',
         company_type: c.company_type || '',
+        company_legal_name: c.legal_name || '',
+        company_entity_tag: c.entity_tag || '',
         badge_color: c.badge_color || '#2563EB',
         company_portal_url: c.official_campus_url || j.official_source_url,
         company_search_url_template: c.search_url_template || '',
@@ -414,7 +416,7 @@ export const localEngine = {
 
     const filtered = enrichedAll.filter((item) => {
       if (kw) {
-        const hay = `${item.title} ${item.requirements_summary} ${item.company_name} ${item.company_short_name} ${item.city} ${item.category}`.toLowerCase();
+        const hay = `${item.title} ${item.requirements_summary} ${item.company_name} ${item.company_short_name} ${item.company_legal_name} ${item.company_entity_tag} ${item.city} ${item.category}`.toLowerCase();
         if (!hay.includes(kw)) return false;
       }
       if (cityList.length > 0 && !cityList.includes(item.city)) return false;
@@ -566,6 +568,8 @@ export const localEngine = {
       company_name: company.name,
       company_short_name: company.short_name,
       company_type: company.company_type,
+      company_legal_name: company.legal_name || '',
+      company_entity_tag: company.entity_tag || '',
       badge_color: company.badge_color,
       company_portal_url: company.official_campus_url,
       company_verification_status: company.verification_status,
@@ -581,7 +585,7 @@ export const localEngine = {
       .filter((c) => {
         if (companyType && companyType !== '全部' && c.company_type !== companyType) return false;
         if (kw) {
-          const hay = `${c.name} ${c.short_name} ${c.industry} ${c.hq_city}`.toLowerCase();
+          const hay = `${c.name} ${c.short_name} ${c.legal_name || ''} ${c.entity_tag || ''} ${c.industry} ${c.hq_city}`.toLowerCase();
           if (!hay.includes(kw)) return false;
         }
         return true;

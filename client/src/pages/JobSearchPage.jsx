@@ -243,7 +243,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
     if (companyWallType !== '全部' && c.company_type !== companyWallType) return false;
     if (companyQuery.trim()) {
       const kw = companyQuery.trim().toLowerCase();
-      const hay = `${c.name} ${c.short_name} ${c.industry} ${c.hq_city} ${c.company_type}`.toLowerCase();
+      const hay = `${c.name} ${c.short_name} ${c.legal_name || ''} ${c.entity_tag || ''} ${c.industry} ${c.hq_city} ${c.company_type}`.toLowerCase();
       if (!hay.includes(kw)) return false;
     }
     return true;
@@ -567,8 +567,26 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                                 <ShieldCheck className="h-3 w-3" />
                                 官网 · {job.official_domain}
                               </span>
+                              {job.company_entity_tag && (
+                                <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                                  {job.company_entity_tag}
+                                </span>
+                              )}
                             </div>
                             <h3 className="mt-1 text-base font-bold text-slate-900">{job.title}</h3>
+                            {job.company_legal_name && (
+                              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                <span className="truncate">工商主体：{job.company_legal_name}</span>
+                                <a
+                                  href={`https://www.tianyancha.com/search?key=${encodeURIComponent(job.company_legal_name)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex shrink-0 items-center gap-0.5 text-amber-700 hover:text-amber-800 hover:underline"
+                                >
+                                  天眼查核验 <ExternalLink className="h-2.5 w-2.5" />
+                                </a>
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -679,8 +697,8 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
           <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
               <div className="text-xs text-slate-600">
-                共收录 <strong>{companies.length}</strong> 家企业官方校招唯一入口（当前筛选{' '}
-                <strong>{filteredCompanies.length}</strong> 家），支持按行业分类检索与带参直搜企业官网。
+                共收录 <strong>{companies.length}</strong> 家正规企业官方校招入口（含大厂、专精特新、科创板/A股及央国企，当前筛选{' '}
+                <strong>{filteredCompanies.length}</strong> 家），每家均附带工商注册主体与天眼查核验直链。
               </div>
               <button
                 type="button"
@@ -700,7 +718,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                   type="text"
                   value={companyQuery}
                   onChange={(e) => setCompanyQuery(e.target.value)}
-                  placeholder="筛选名企名称、行业或城市（如：华为、半导体、上海、银行）..."
+                  placeholder="筛选企业名称、工商全称、股票代码、行业或城市（如：汇川、300124、信创、苏州）..."
                   className="w-full rounded-xl border border-slate-200 bg-slate-50/60 py-2 pr-3 pl-9 text-xs text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none"
                 />
               </div>
@@ -773,6 +791,18 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                       <span className="truncate font-mono text-[11px]">{c.official_campus_url}</span>
                     </div>
 
+                    {(c.legal_name || c.entity_tag) && (
+                      <div className="mt-2 rounded-lg border border-amber-200/70 bg-amber-50/60 px-2.5 py-1.5 text-[11px] text-amber-950">
+                        {c.legal_name && (
+                          <div className="flex items-center gap-1 font-medium">
+                            <ShieldCheck className="h-3 w-3 shrink-0 text-amber-700" />
+                            <span className="truncate">工商主体：{c.legal_name}</span>
+                          </div>
+                        )}
+                        {c.entity_tag && <div className="mt-0.5 text-[10px] text-amber-800">{c.entity_tag}</div>}
+                      </div>
+                    )}
+
                     <p className="mt-2 text-xs leading-relaxed text-slate-600">{c.notes}</p>
                     {c.last_verify_message && (
                       <p className="mt-1.5 text-[11px] text-slate-500">最近核验：{c.last_verify_message}</p>
@@ -782,6 +812,14 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
                     <span className="text-xs text-slate-500">在招关联 {c.open_job_count} 个岗位</span>
                     <div className="flex flex-wrap items-center gap-1.5">
+                      <a
+                        href={`https://www.tianyancha.com/search?key=${encodeURIComponent(c.legal_name || c.name)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                      >
+                        天眼查 <ExternalLink className="h-3 w-3" />
+                      </a>
                       <button
                         type="button"
                         onClick={() => handleVerifySingle({ companyId: c.id }, c.id)}

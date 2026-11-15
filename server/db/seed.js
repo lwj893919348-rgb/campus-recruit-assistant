@@ -295,8 +295,8 @@ export function upsertBuiltInCatalog(db) {
     INSERT INTO companies (
       id, name, short_name, industry, company_type, official_domain,
       official_campus_url, search_url_template, badge_color, hq_city,
-      verification_status, last_verified_at, updated_at, notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'verified_official', ?, ?, ?)
+      legal_name, entity_tag, verification_status, last_verified_at, updated_at, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'verified_official', ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       short_name = excluded.short_name,
@@ -307,6 +307,8 @@ export function upsertBuiltInCatalog(db) {
       search_url_template = excluded.search_url_template,
       badge_color = excluded.badge_color,
       hq_city = excluded.hq_city,
+      legal_name = excluded.legal_name,
+      entity_tag = excluded.entity_tag,
       notes = excluded.notes,
       updated_at = excluded.updated_at
   `);
@@ -360,6 +362,8 @@ export function upsertBuiltInCatalog(db) {
         c.search_url_template || '',
         c.badge_color,
         c.hq_city,
+        c.legal_name || '',
+        c.entity_tag || '',
         NOW_ISO,
         NOW_ISO,
         c.notes,

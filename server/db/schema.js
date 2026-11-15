@@ -23,6 +23,8 @@ export function initSchema(db) {
       search_url_template TEXT DEFAULT '',
       badge_color TEXT NOT NULL DEFAULT '#2563EB',
       hq_city TEXT NOT NULL,
+      legal_name TEXT DEFAULT '',
+      entity_tag TEXT DEFAULT '',
       verification_status TEXT NOT NULL DEFAULT 'verified_official',
       last_verified_at TEXT,
       updated_at TEXT DEFAULT '',
@@ -148,6 +150,8 @@ export function initSchema(db) {
   // Backward-compatible migrations for existing v1 databases
   ensureColumn(db, 'companies', 'search_url_template', "TEXT DEFAULT ''");
   ensureColumn(db, 'companies', 'updated_at', "TEXT DEFAULT ''");
+  ensureColumn(db, 'companies', 'legal_name', "TEXT DEFAULT ''");
+  ensureColumn(db, 'companies', 'entity_tag', "TEXT DEFAULT ''");
   ensureColumn(db, 'jobs', 'external_id', "TEXT DEFAULT ''");
   db.exec('CREATE INDEX IF NOT EXISTS idx_jobs_external_id ON jobs(external_id);');
 }

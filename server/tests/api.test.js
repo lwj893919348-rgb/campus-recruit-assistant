@@ -7,6 +7,7 @@ import { createDatabase } from '../db/database.js';
 import { initSchema } from '../db/schema.js';
 import { upsertBuiltInCatalog } from '../db/seed.js';
 import { createApp } from '../app.js';
+import { OFFICIAL_COMPANIES, OFFICIAL_JOBS } from '../data/officialCatalog.js';
 import { extractRootDomain, isDomainMatch, verifyOfficialUrl } from '../services/officialVerifier.js';
 import {
   refreshJobLifecycles,
@@ -237,24 +238,57 @@ test('Applications lifecycle, resume linking, demo clearing, and CSV export', as
   }
 });
 
-test('Expanded catalog has 75 companies & 130+ jobs, and lossless migration preserves user data', async () => {
+test('Expanded cross-verified catalog has 155+ legitimate companies & 220+ jobs, and lossless migration preserves user data', async () => {
+  assert.ok(OFFICIAL_COMPANIES.length >= 155, `Expected >= 155 companies, got ${OFFICIAL_COMPANIES.length}`);
+  assert.ok(OFFICIAL_JOBS.length >= 220, `Expected >= 220 jobs, got ${OFFICIAL_JOBS.length}`);
+
+  // Every built-in company & job URL must align strictly with its declared root domain and have verified legal entity info
+  for (const c of OFFICIAL_COMPANIES) {
+    assert.ok(c.legal_name && c.legal_name.trim().length > 2, `Missing legal_name for ${c.id}`);
+    assert.ok(c.entity_tag && c.entity_tag.trim().length > 2, `Missing entity_tag for ${c.id}`);
+    const hostname = new URL(c.official_campus_url).hostname;
+    assert.ok(
+      isDomainMatch(hostname, c.official_domain),
+      `Company domain mismatch for ${c.id}: ${hostname} vs ${c.official_domain}`,
+    );
+  }
+  for (const j of OFFICIAL_JOBS) {
+    const hostname = new URL(j.official_source_url).hostname;
+    assert.ok(
+      isDomainMatch(hostname, j.official_domain),
+      `Job domain mismatch for ${j.id}: ${hostname} vs ${j.official_domain}`,
+    );
+  }
+
   const freshDb = createDatabase(':memory:', { seed: true });
   try {
     const companyCount = freshDb.prepare('SELECT COUNT(*) AS cnt FROM companies').get().cnt;
     const jobCount = freshDb.prepare('SELECT COUNT(*) AS cnt FROM jobs').get().cnt;
-    assert.equal(companyCount, 75);
-    assert.ok(jobCount >= 130, `Expected >= 130 jobs, got ${jobCount}`);
+    assert.equal(companyCount, OFFICIAL_COMPANIES.length);
+    assert.ok(jobCount >= 220, `Expected >= 220 jobs, got ${jobCount}`);
 
-    const missingTemplate = freshDb
-      .prepare("SELECT COUNT(*) AS cnt FROM companies WHERE COALESCE(search_url_template, '') = ''")
+    const missingMeta = freshDb
+      .prepare(
+        "SELECT COUNT(*) AS cnt FROM companies WHERE COALESCE(search_url_template, '') = '' OR COALESCE(legal_name, '') = '' OR COALESCE(entity_tag, '') = ''",
+      )
       .get().cnt;
-    assert.equal(missingTemplate, 0);
+    assert.equal(missingMeta, 0);
 
     const app = createApp(freshDb);
     const chipRes = await invokeApp(app, 'GET', `/api/companies?companyType=${encodeURIComponent('半导体芯片')}`);
     assert.equal(chipRes.status, 200);
-    assert.ok(chipRes.data.companies.length >= 5);
+    assert.ok(chipRes.data.companies.length >= 8);
     assert.ok(chipRes.data.companies.every((c) => c.company_type === '半导体芯片'));
+
+    for (const nonBigTechType of ['专精特新/科创上市', '软件与信创服务', '生物医药健康', '消费零售与物流']) {
+      const typeRes = await invokeApp(app, 'GET', `/api/companies?companyType=${encodeURIComponent(nonBigTechType)}`);
+      assert.equal(typeRes.status, 200);
+      assert.ok(typeRes.data.companies.length >= 9, `Expected >= 9 companies for ${nonBigTechType}`);
+    }
+
+    const stockSearch = await invokeApp(app, 'GET', '/api/companies?q=300124');
+    assert.equal(stockSearch.status, 200);
+    assert.ok(stockSearch.data.companies.some((c) => c.id === 'inovance' && c.legal_name === '深圳市汇川技术股份有限公司'));
   } finally {
     freshDb.close();
   }
@@ -321,20 +355,21 @@ test('Expanded catalog has 75 companies & 130+ jobs, and lossless migration pres
 
     initSchema(legacyDb);
     const mergeStats = upsertBuiltInCatalog(legacyDb);
-    assert.equal(mergeStats.companiesAdded, 74);
+    assert.equal(mergeStats.companiesAdded, OFFICIAL_COMPANIES.length - 1);
     assert.equal(mergeStats.companiesUpdated, 1);
-    assert.ok(mergeStats.jobsAdded >= 130);
-    assert.equal(legacyDb.prepare('SELECT COUNT(*) AS cnt FROM companies').get().cnt, 75);
+    assert.ok(mergeStats.jobsAdded >= 220);
+    assert.equal(legacyDb.prepare('SELECT COUNT(*) AS cnt FROM companies').get().cnt, OFFICIAL_COMPANIES.length);
 
-    // Preserve user custom job, resume, application, and prior verification_status
+    // Preserve user custom job, resume, application, and prior verification_status while backfilling legal_name
     const customJob = legacyDb.prepare('SELECT * FROM jobs WHERE id = ?').get('user-custom-job');
     assert.equal(customJob.title, '用户手动补充校招岗');
     const savedResume = legacyDb.prepare('SELECT * FROM resumes WHERE id = ?').get('my-resume');
     assert.equal(savedResume.title, '我的个人简历');
     const savedApp = legacyDb.prepare('SELECT * FROM applications WHERE id = ?').get('my-app');
     assert.equal(savedApp.status, 'interview');
-    const preservedTencent = legacyDb.prepare('SELECT verification_status FROM companies WHERE id = ?').get('tencent');
+    const preservedTencent = legacyDb.prepare('SELECT verification_status, legal_name, entity_tag FROM companies WHERE id = ?').get('tencent');
     assert.equal(preservedTencent.verification_status, 'reachable');
+    assert.equal(preservedTencent.legal_name, '深圳市腾讯计算机系统有限公司');
   } finally {
     legacyDb.close();
   }
