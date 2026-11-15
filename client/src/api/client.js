@@ -57,6 +57,10 @@ export const api = {
     const qs = buildQuery(params);
     return request(`/api/companies${qs ? `?${qs}` : ''}`);
   },
+  createCompany: (data) =>
+    IS_STATIC_MODE
+      ? localEngine.createCompany(data)
+      : request('/api/companies', { method: 'POST', body: JSON.stringify(data) }),
   verifyUrl: (payload) =>
     IS_STATIC_MODE
       ? localEngine.verifyUrl(payload)

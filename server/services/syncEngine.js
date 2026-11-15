@@ -1,6 +1,12 @@
 import crypto from 'node:crypto';
 import { upsertBuiltInCatalog } from '../db/seed.js';
-import { extractRootDomain, isPrivateOrLoopbackHost } from './officialVerifier.js';
+import {
+  extractAtsTenantPrefix,
+  extractRootDomain,
+  findMatchingCompany,
+  isPrivateOrLoopbackHost,
+  isSharedAtsDomain,
+} from './officialVerifier.js';
 
 const CITY_PROVINCE_MAP = {
   北京: { province: '北京', tier: '一线城市' },
@@ -226,26 +232,34 @@ function findOrCreateCompany(db, item, defaultCompanyId, rootDomain, allCompanie
     if (byId) return byId;
   }
 
-  const byDomain = allCompanies.find((c) => c.official_domain === rootDomain);
-  if (byDomain) return byDomain;
+  const matched = findMatchingCompany(allCompanies, {
+    companyName: item.companyName,
+    shortName: item.shortName,
+    legalName: item.legalName,
+    targetUrl: item.officialUrl,
+    rootDomain,
+  });
+  if (matched) return matched;
 
   const cleanName = String(item.companyName || '').trim();
-  if (cleanName) {
-    const exact = allCompanies.find((c) => c.name === cleanName || c.short_name === cleanName);
-    if (exact) return exact;
+  const sharedAts = isSharedAtsDomain(rootDomain);
+  if (cleanName && !sharedAts) {
     const partial = allCompanies.find((c) => cleanName.includes(c.short_name) && c.short_name.length >= 2);
     if (partial) return partial;
   }
 
-  // Fallback inference from title if no companyName provided (e.g. university RSS item)
-  for (const c of allCompanies) {
-    if (c.short_name.length >= 2 && item.title.includes(c.short_name)) {
-      return c;
+  // Fallback inference from title ONLY when no companyName was provided (e.g. university RSS item)
+  if (!cleanName) {
+    for (const c of allCompanies) {
+      if (c.short_name.length >= 2 && item.title.includes(c.short_name)) {
+        return c;
+      }
     }
   }
 
   const resolvedName = cleanName || rootDomain || '高校校招公告单位';
-  const companyId = `comp-${crypto.createHash('md5').update(`${resolvedName}:${rootDomain}`).digest('hex').slice(0, 8)}`;
+  const tenantKey = extractAtsTenantPrefix(item.officialUrl) || rootDomain;
+  const companyId = `comp-${crypto.createHash('md5').update(`${resolvedName}:${tenantKey}`).digest('hex').slice(0, 8)}`;
   const now = new Date().toISOString();
 
   db.prepare(

@@ -32,6 +32,114 @@ export function isDomainMatch(resolvedHostname, expectedDomain) {
   return host === expected || host.endsWith(`.${expected}`);
 }
 
+/**
+ * Multi-tenant third-party ATS and recruitment portal root domains.
+ * Startups frequently host their official campus sites here without registering a separate domain.
+ */
+export const SHARED_ATS_DOMAINS = new Set([
+  'feishu.cn',
+  'mokahr.com',
+  'zhiye.com',
+  'hotjob.cn',
+  'hotat.cn',
+  'wintalent.cn',
+  'chinahr.com',
+  'iguopin.com',
+  'nowcoder.com',
+  'zhipin.com',
+  'liepin.com',
+  'shixiseng.com',
+]);
+
+const GENERIC_ATS_SUBDOMAINS = new Set([
+  'www',
+  'app',
+  'jobs',
+  'campus',
+  'career',
+  'careers',
+  'recruit',
+  'wecruit',
+  'hr',
+  'h5',
+  'm',
+]);
+
+export function isSharedAtsDomain(rootDomain = '') {
+  return SHARED_ATS_DOMAINS.has(String(rootDomain || '').trim().toLowerCase());
+}
+
+/**
+ * Extracts a tenant-identifying prefix for shared ATS URLs (e.g. "modelbest.jobs.feishu.cn" or
+ * "app.mokahr.com/campus-recruitment/biren") so different startups on the same ATS never collide.
+ */
+export function extractAtsTenantPrefix(urlStr = '') {
+  try {
+    const parsed = new URL(urlStr);
+    const host = parsed.hostname.toLowerCase();
+    const root = extractRootDomain(host);
+    if (!isSharedAtsDomain(root)) return root;
+
+    const hostWithoutRoot = host === root ? '' : host.slice(0, -(root.length + 1));
+    const subLabels = hostWithoutRoot ? hostWithoutRoot.split('.').filter(Boolean) : [];
+    const hasSpecificSubdomain = subLabels.some((lbl) => !GENERIC_ATS_SUBDOMAINS.has(lbl));
+    if (hasSpecificSubdomain) {
+      return host;
+    }
+
+    const pathParts = parsed.pathname.split('/').filter(Boolean).slice(0, 2);
+    return pathParts.length > 0 ? `${host}/${pathParts.join('/').toLowerCase()}` : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Resolves an existing company without conflating distinct startups hosted on a shared ATS domain.
+ */
+export function findMatchingCompany(
+  companies = [],
+  { companyName = '', shortName = '', legalName = '', targetUrl = '', rootDomain = '' } = {},
+) {
+  const cleanName = String(companyName || '').trim().toLowerCase();
+  const cleanShort = String(shortName || '').trim().toLowerCase();
+  const cleanLegal = String(legalName || '').trim().toLowerCase();
+  const cleanRoot = String(rootDomain || '').trim().toLowerCase();
+  const sharedAts = isSharedAtsDomain(cleanRoot);
+  const incomingTenant = sharedAts ? extractAtsTenantPrefix(targetUrl) : '';
+
+  if (cleanRoot && !sharedAts) {
+    const byDomain = companies.find((c) => String(c.official_domain || '').toLowerCase() === cleanRoot);
+    if (byDomain) return byDomain;
+  }
+
+  if (sharedAts && incomingTenant) {
+    const byTenant = companies.find((c) => {
+      const candidateRoot = String(c.official_domain || '').toLowerCase();
+      if (!isSharedAtsDomain(candidateRoot)) return false;
+      const existingTenant = extractAtsTenantPrefix(c.official_campus_url || c.search_url_template || '');
+      return Boolean(existingTenant && existingTenant === incomingTenant);
+    });
+    if (byTenant) return byTenant;
+  }
+
+  const nameCandidates = [cleanName, cleanShort, cleanLegal].filter(Boolean);
+  if (nameCandidates.length > 0) {
+    return (
+      companies.find((c) => {
+        const cName = String(c.name || '').trim().toLowerCase();
+        const cShort = String(c.short_name || '').trim().toLowerCase();
+        const cLegal = String(c.legal_name || '').trim().toLowerCase();
+        return nameCandidates.some(
+          (cand) => cand === cName || (cShort && cand === cShort) || (cLegal && cand === cLegal),
+        );
+      }) || null
+    );
+  }
+
+  return null;
+}
+
 export function isPrivateOrLoopbackHost(hostname = '') {
   const h = hostname.toLowerCase();
   if (h === 'localhost' || h === '::1' || h.endsWith('.local')) return true;

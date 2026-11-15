@@ -50,6 +50,204 @@ function extractRootDomain(hostname = '') {
   return lastTwo;
 }
 
+const SHARED_ATS_DOMAINS = new Set([
+  'feishu.cn',
+  'mokahr.com',
+  'zhiye.com',
+  'hotjob.cn',
+  'hotat.cn',
+  'wintalent.cn',
+  'chinahr.com',
+  'iguopin.com',
+  'nowcoder.com',
+  'zhipin.com',
+  'liepin.com',
+  'shixiseng.com',
+]);
+
+const GENERIC_ATS_SUBDOMAINS = new Set([
+  'www',
+  'app',
+  'jobs',
+  'campus',
+  'career',
+  'careers',
+  'recruit',
+  'wecruit',
+  'hr',
+  'h5',
+  'm',
+]);
+
+function isSharedAtsDomain(rootDomain = '') {
+  return SHARED_ATS_DOMAINS.has(String(rootDomain || '').trim().toLowerCase());
+}
+
+function extractAtsTenantPrefix(urlStr = '') {
+  try {
+    const parsed = new URL(urlStr);
+    const host = parsed.hostname.toLowerCase();
+    const root = extractRootDomain(host);
+    if (!isSharedAtsDomain(root)) return root;
+
+    const hostWithoutRoot = host === root ? '' : host.slice(0, -(root.length + 1));
+    const subLabels = hostWithoutRoot ? hostWithoutRoot.split('.').filter(Boolean) : [];
+    if (subLabels.some((lbl) => !GENERIC_ATS_SUBDOMAINS.has(lbl))) {
+      return host;
+    }
+
+    const pathParts = parsed.pathname.split('/').filter(Boolean).slice(0, 2);
+    return pathParts.length > 0 ? `${host}/${pathParts.join('/').toLowerCase()}` : '';
+  } catch {
+    return '';
+  }
+}
+
+function findMatchingCompany(
+  companies = [],
+  { companyName = '', shortName = '', legalName = '', targetUrl = '', rootDomain = '' } = {},
+) {
+  const cleanName = String(companyName || '').trim().toLowerCase();
+  const cleanShort = String(shortName || '').trim().toLowerCase();
+  const cleanLegal = String(legalName || '').trim().toLowerCase();
+  const cleanRoot = String(rootDomain || '').trim().toLowerCase();
+  const sharedAts = isSharedAtsDomain(cleanRoot);
+  const incomingTenant = sharedAts ? extractAtsTenantPrefix(targetUrl) : '';
+
+  if (cleanRoot && !sharedAts) {
+    const byDomain = companies.find((c) => String(c.official_domain || '').toLowerCase() === cleanRoot);
+    if (byDomain) return byDomain;
+  }
+
+  if (sharedAts && incomingTenant) {
+    const byTenant = companies.find((c) => {
+      const candidateRoot = String(c.official_domain || '').toLowerCase();
+      if (!isSharedAtsDomain(candidateRoot)) return false;
+      const existingTenant = extractAtsTenantPrefix(c.official_campus_url || c.search_url_template || '');
+      return Boolean(existingTenant && existingTenant === incomingTenant);
+    });
+    if (byTenant) return byTenant;
+  }
+
+  const nameCandidates = [cleanName, cleanShort, cleanLegal].filter(Boolean);
+  if (nameCandidates.length > 0) {
+    return (
+      companies.find((c) => {
+        const cName = String(c.name || '').trim().toLowerCase();
+        const cShort = String(c.short_name || '').trim().toLowerCase();
+        const cLegal = String(c.legal_name || '').trim().toLowerCase();
+        return nameCandidates.some(
+          (cand) => cand === cName || (cShort && cand === cShort) || (cLegal && cand === cLegal),
+        );
+      }) || null
+    );
+  }
+
+  return null;
+}
+
+function parseOfficialHttpUrl(rawUrl = '') {
+  const trimmed = String(rawUrl || '').trim();
+  if (!trimmed) {
+    throw new Error('请填写官网校招或招聘链接。');
+  }
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(trimmed);
+  } catch {
+    throw new Error('官网投递链接格式无效，请以 https:// 或 http:// 开头。');
+  }
+  if (!['http:', 'https:'].includes(parsedUrl.protocol) || isPrivateOrLoopbackHost(parsedUrl.hostname)) {
+    throw new Error('请填写有效的公开企业官网 HTTP/HTTPS 链接。');
+  }
+  return { parsedUrl, rootDomain: extractRootDomain(parsedUrl.hostname) };
+}
+
+function resolveOrCreateLocalCompany({ state, companies, payload, parsedUrl, rootDomain, now }) {
+  const cleanName = String(payload.companyName || payload.name || '').trim();
+  const cleanShort = String(payload.shortName || '').trim() || cleanName.slice(0, 6);
+  const cleanLegal = String(payload.legalName || '').trim();
+  const cleanType = String(payload.companyType || '').trim() || '优质企业';
+  const cleanIndustry = String(payload.industry || '').trim() || '综合行业';
+  const cleanCity = String(payload.hqCity || payload.city || '').trim() || '全国多地';
+  const cleanEntityTag =
+    String(payload.entityTag || '').trim() ||
+    (cleanType === '初创/融资企业' ? '初创/融资企业 · 已核对官方入口' : '用户补充企业 · 已核对官方入口');
+  const cleanNotes =
+    String(payload.notes || '').trim() ||
+    (cleanType === '初创/融资企业'
+      ? '由用户在本地浏览器收录的初创/融资企业官方招聘入口（建议结合天眼查核对主体）。'
+      : '由用户在本地浏览器收录并校对域名的官方校招入口。');
+
+  const existing = findMatchingCompany(companies, {
+    companyName: cleanName,
+    shortName: cleanShort,
+    legalName: cleanLegal,
+    targetUrl: parsedUrl.href,
+    rootDomain,
+  });
+
+  if (existing) {
+    if ((cleanLegal && !existing.legal_name) || (String(payload.entityTag || '').trim() && !existing.entity_tag)) {
+      if (!existing.legal_name && cleanLegal) existing.legal_name = cleanLegal;
+      if (!existing.entity_tag && String(payload.entityTag || '').trim()) existing.entity_tag = cleanEntityTag;
+      existing.updated_at = now;
+    }
+    return { company: existing, created: false };
+  }
+
+  const company = {
+    id: genId('comp'),
+    name: cleanName,
+    short_name: cleanShort,
+    industry: cleanIndustry,
+    company_type: cleanType,
+    official_domain: rootDomain,
+    official_campus_url: parsedUrl.href,
+    search_url_template: parsedUrl.href,
+    badge_color: cleanType === '初创/融资企业' ? '#7C3AED' : '#334155',
+    hq_city: cleanCity,
+    legal_name: cleanLegal,
+    entity_tag: cleanEntityTag,
+    verification_status: 'user_submitted',
+    last_verified_at: now,
+    updated_at: now,
+    notes: cleanNotes,
+  };
+  companies.push(company);
+  state.userCompanies.push(company);
+  return { company, created: true };
+}
+
+function buildLocalJobRecord(company, payload, parsedUrl, rootDomain, now) {
+  const cleanCity = String(payload.city || '').trim();
+  const job = {
+    id: genId('job'),
+    company_id: company.id,
+    title: String(payload.title || '').trim(),
+    category: String(payload.category || '').trim() || '技术研发',
+    season_tag: String(payload.seasonTag || '').trim() || '2027届秋招补录',
+    graduation_years:
+      Array.isArray(payload.graduationYears) && payload.graduationYears.length > 0 ? payload.graduationYears : ['2027'],
+    province: String(payload.province || '').trim() || cleanCity,
+    city: cleanCity,
+    city_tier: inferCityTier(cleanCity),
+    official_source_url: parsedUrl.href,
+    official_domain: rootDomain,
+    deadline: String(payload.deadline || '').trim() || '招满即止',
+    status: 'open',
+    is_referral: Boolean(payload.isReferral),
+    salary_range: String(payload.salaryRange || '').trim(),
+    requirements_summary:
+      String(payload.requirementsSummary || '').trim() || '详情请点击直达官网查看具体岗位职责与专业要求。',
+    sync_source: 'user_submitted',
+    last_checked_at: now,
+    created_at: now,
+  };
+  job.status = computeDeadlineStatus(job);
+  return job;
+}
+
 function isPrivateOrLoopbackHost(hostname = '') {
   const host = String(hostname).toLowerCase();
   if (!host) return true;
@@ -481,85 +679,32 @@ export const localEngine = {
   },
 
   async createJob(data) {
+    const body = data || {};
     const {
       companyName = '',
       title = '',
-      category = '技术研发',
-      seasonTag = '2027届秋招补录',
-      graduationYears = ['2027'],
-      province = '',
       city = '',
       officialUrl = '',
-      deadline = '招满即止',
-      isReferral = false,
-      salaryRange = '',
-      requirementsSummary = '',
-      companyType = '优质企业',
-      industry = '综合行业',
-    } = data || {};
+    } = body;
 
-    if (!companyName.trim() || !title.trim() || !city.trim() || !officialUrl.trim()) {
+    if (!String(companyName).trim() || !String(title).trim() || !String(city).trim() || !String(officialUrl).trim()) {
       throw new Error('请填写完整的公司名称、岗位名称、工作城市与官网投递链接。');
     }
 
-    let parsedUrl;
-    try {
-      parsedUrl = new URL(officialUrl.trim());
-    } catch {
-      throw new Error('官网投递链接格式无效，请以 https:// 或 http:// 开头。');
-    }
-    if (!['http:', 'https:'].includes(parsedUrl.protocol) || isPrivateOrLoopbackHost(parsedUrl.hostname)) {
-      throw new Error('请填写有效的公开企业官网 HTTP/HTTPS 链接。');
-    }
-
+    const { parsedUrl, rootDomain } = parseOfficialHttpUrl(officialUrl);
     const { state, companies } = await getHydratedContext();
-    const rootDomain = extractRootDomain(parsedUrl.hostname);
     const now = new Date().toISOString();
 
-    let company = companies.find((c) => c.official_domain === rootDomain || c.name === companyName.trim());
-    if (!company) {
-      const cleanName = companyName.trim();
-      company = {
-        id: genId('comp'),
-        name: cleanName,
-        short_name: cleanName.slice(0, 4),
-        industry: industry.trim() || '综合行业',
-        company_type: companyType.trim() || '优质企业',
-        official_domain: rootDomain,
-        official_campus_url: officialUrl.trim(),
-        search_url_template: officialUrl.trim(),
-        badge_color: '#334155',
-        hq_city: city.trim(),
-        verification_status: 'user_submitted',
-        last_verified_at: now,
-        notes: '由用户在本地浏览器收录并校对域名的官方校招入口。',
-      };
-      state.userCompanies.push(company);
-    }
+    const { company } = resolveOrCreateLocalCompany({
+      state,
+      companies,
+      payload: body,
+      parsedUrl,
+      rootDomain,
+      now,
+    });
 
-    const cleanCity = city.trim();
-    const job = {
-      id: genId('job'),
-      company_id: company.id,
-      title: title.trim(),
-      category: category.trim() || '技术研发',
-      season_tag: seasonTag.trim() || '2027届秋招补录',
-      graduation_years: Array.isArray(graduationYears) && graduationYears.length > 0 ? graduationYears : ['2027'],
-      province: province.trim() || cleanCity,
-      city: cleanCity,
-      city_tier: inferCityTier(cleanCity),
-      official_source_url: officialUrl.trim(),
-      official_domain: rootDomain,
-      deadline: deadline.trim() || '招满即止',
-      status: 'open',
-      is_referral: Boolean(isReferral),
-      salary_range: salaryRange.trim(),
-      requirements_summary: requirementsSummary.trim() || '详情请点击直达官网查看具体岗位职责与专业要求。',
-      sync_source: 'user_submitted',
-      last_checked_at: now,
-      created_at: now,
-    };
-    job.status = computeDeadlineStatus(job);
+    const job = buildLocalJobRecord(company, body, parsedUrl, rootDomain, now);
     state.userJobs.unshift(job);
     saveLocalState(state);
 
@@ -573,6 +718,93 @@ export const localEngine = {
       badge_color: company.badge_color,
       company_portal_url: company.official_campus_url,
       company_verification_status: company.verification_status,
+    };
+  },
+
+  async createCompany(data) {
+    const body = data || {};
+    const cleanName = String(body.name || body.companyName || '').trim();
+    const officialUrl = String(body.officialUrl || '').trim();
+
+    if (!cleanName || !officialUrl) {
+      throw new Error('请填写完整的企业名称与官方招聘/校招入口链接。');
+    }
+
+    const parsedCompany = parseOfficialHttpUrl(officialUrl);
+    const jobTitle = String(body.jobTitle || '').trim();
+    const parsedJob =
+      jobTitle && String(body.jobUrl || '').trim() ? parseOfficialHttpUrl(body.jobUrl) : parsedCompany;
+
+    const { state, companies, jobs } = await getHydratedContext();
+    const now = new Date().toISOString();
+
+    const { company, created } = resolveOrCreateLocalCompany({
+      state,
+      companies,
+      payload: {
+        ...body,
+        companyName: cleanName,
+        companyType: body.companyType || '初创/融资企业',
+        industry: body.industry || '人工智能 / 硬科技',
+        hqCity: body.hqCity || body.city || '北京',
+      },
+      parsedUrl: parsedCompany.parsedUrl,
+      rootDomain: parsedCompany.rootDomain,
+      now,
+    });
+
+    let createdJob = null;
+    if (jobTitle) {
+      const job = buildLocalJobRecord(
+        company,
+        {
+          title: jobTitle,
+          category: body.category || '技术研发',
+          seasonTag: body.seasonTag || '2027届秋招补录',
+          graduationYears: body.graduationYears || ['2027'],
+          province: body.province || '',
+          city: body.city || body.hqCity || company.hq_city || '北京',
+          deadline: body.deadline || '招满即止',
+          isReferral: Boolean(body.isReferral),
+          salaryRange: body.salaryRange || '',
+          requirementsSummary: body.requirementsSummary || '',
+        },
+        parsedJob.parsedUrl,
+        parsedJob.rootDomain,
+        now,
+      );
+      state.userJobs.unshift(job);
+      jobs.unshift(job);
+      createdJob = {
+        ...job,
+        company_name: company.name,
+        company_short_name: company.short_name,
+        company_type: company.company_type,
+        company_legal_name: company.legal_name || '',
+        company_entity_tag: company.entity_tag || '',
+        badge_color: company.badge_color,
+        company_portal_url: company.official_campus_url,
+        company_verification_status: company.verification_status,
+      };
+    }
+
+    saveLocalState(state);
+
+    const companyJobs = jobs.filter((j) => j.company_id === company.id);
+    const openCount = companyJobs.filter((j) => j.status === 'open' || j.status === 'closing_soon').length;
+    return {
+      company: {
+        ...company,
+        open_job_count: openCount,
+        total_job_count: companyJobs.length,
+      },
+      job: createdJob,
+      created,
+      message: created
+        ? `已成功收录「${company.name}」官方校招入口。`
+        : createdJob
+          ? `「${company.name}」已在企业墙中，已同步新增其校招岗位。`
+          : `「${company.name}」已存在于官方企业名录中。`,
     };
   },
 
@@ -1153,28 +1385,23 @@ export const localEngine = {
       }
 
       const rootDomain = extractRootDomain(parsedUrl.hostname);
-      let company = companies.find(
-        (c) => c.official_domain === rootDomain || c.name === item.companyName || c.short_name === item.companyName,
-      );
-      if (!company) {
-        company = {
-          id: genId('comp'),
-          name: item.companyName,
-          short_name: item.companyName.slice(0, 4),
-          industry: '综合行业',
-          company_type: '优质企业',
-          official_domain: rootDomain,
-          official_campus_url: parsedUrl.origin,
-          search_url_template: parsedUrl.origin,
-          badge_color: '#334155',
-          hq_city: item.city || '全国多地',
-          verification_status: 'user_submitted',
-          last_verified_at: now,
+      const { company } = resolveOrCreateLocalCompany({
+        state,
+        companies,
+        payload: {
+          companyName: item.companyName,
+          shortName: item.shortName,
+          legalName: item.legalName,
+          entityTag: item.entityTag,
+          companyType: item.companyType || '优质企业',
+          industry: item.industry || '综合行业',
+          hqCity: item.city || '全国多地',
           notes: '批量导入时自动补充的官方校招入口。',
-        };
-        companies.push(company);
-        state.userCompanies.push(company);
-      }
+        },
+        parsedUrl,
+        rootDomain,
+        now,
+      });
 
       const dupUserIdx = state.userJobs.findIndex((uj) => uj.official_source_url === parsedUrl.href);
       const dupBuiltin = jobs.find((j) => j.official_source_url === parsedUrl.href);

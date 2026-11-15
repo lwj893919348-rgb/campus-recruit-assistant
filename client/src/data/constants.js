@@ -92,6 +92,7 @@ export const COMPANY_TYPE_OPTIONS = [
   '全部',
   '大厂科技',
   '独角兽/名企',
+  '初创/融资企业',
   '硬科技名企',
   '专精特新/科创上市',
   '软件与信创服务',
@@ -103,6 +104,14 @@ export const COMPANY_TYPE_OPTIONS = [
   '国央企',
   '金融机构',
   '外企名企',
+];
+
+export const STARTUP_ENTITY_PRESETS = [
+  '初创/融资企业 · 种子/天使轮',
+  '初创/融资企业 · Pre-A/A轮融资',
+  '初创/融资企业 · B轮及以上高成长',
+  '初创/融资企业 · 高校科研孵化',
+  '初创/融资企业 · 拟IPO准独角兽',
 ];
 
 export const JOB_CATEGORY_OPTIONS = [

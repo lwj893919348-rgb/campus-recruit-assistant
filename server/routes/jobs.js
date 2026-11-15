@@ -2,6 +2,7 @@ import express from 'express';
 import crypto from 'node:crypto';
 import {
   extractRootDomain,
+  findMatchingCompany,
   isPrivateOrLoopbackHost,
   verifyOfficialUrl,
 } from '../services/officialVerifier.js';
@@ -20,6 +21,174 @@ function inferCityTier(city = '') {
   }
   if (['全国多地', '海外', '远程'].includes(city)) return '其他/海外';
   return '省会及重点城市';
+}
+
+function parseOfficialHttpUrl(rawUrl = '') {
+  const trimmed = String(rawUrl || '').trim();
+  if (!trimmed) {
+    return { error: '请填写官网校招或招聘链接。' };
+  }
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(trimmed);
+  } catch {
+    return { error: '官网投递链接格式无效，请以 https:// 或 http:// 开头。' };
+  }
+  if ((parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') || isPrivateOrLoopbackHost(parsedUrl.hostname)) {
+    return { error: '请填写有效的公开企业官网 HTTP/HTTPS 链接。' };
+  }
+  return { parsedUrl, rootDomain: extractRootDomain(parsedUrl.hostname) };
+}
+
+function fetchCompanySummaryById(db, companyId) {
+  return db
+    .prepare(
+      `
+      SELECT
+        c.*,
+        (SELECT COUNT(*) FROM jobs j WHERE j.company_id = c.id AND j.status IN ('open', 'closing_soon')) AS open_job_count,
+        (SELECT COUNT(*) FROM jobs j WHERE j.company_id = c.id) AS total_job_count,
+        (SELECT message FROM sync_logs l WHERE l.company_id = c.id ORDER BY l.id DESC LIMIT 1) AS last_verify_message,
+        (SELECT result_status FROM sync_logs l WHERE l.company_id = c.id ORDER BY l.id DESC LIMIT 1) AS last_verify_result
+      FROM companies c
+      WHERE c.id = ?
+    `,
+    )
+    .get(companyId);
+}
+
+/**
+ * Resolves an existing company (with shared-ATS isolation) or inserts a newly submitted enterprise.
+ */
+function resolveOrCreateCompany(db, payload, parsedUrl, now) {
+  const cleanName = String(payload.companyName || payload.name || '').trim();
+  const cleanShort = String(payload.shortName || '').trim() || cleanName.slice(0, 6);
+  const cleanLegal = String(payload.legalName || '').trim();
+  const cleanType = String(payload.companyType || '').trim() || '优质企业';
+  const cleanIndustry = String(payload.industry || '').trim() || '综合行业';
+  const cleanCity = String(payload.hqCity || payload.city || '').trim() || '全国多地';
+  const cleanEntityTag =
+    String(payload.entityTag || '').trim() ||
+    (cleanType === '初创/融资企业' ? '初创/融资企业 · 已核对官方入口' : '用户补充企业 · 已核对官方入口');
+  const cleanNotes =
+    String(payload.notes || '').trim() ||
+    (cleanType === '初创/融资企业'
+      ? '由用户自主收录的初创/融资企业官方招聘入口（建议结合天眼查核对主体）。'
+      : '由用户自主收录并校对域名的官方校招入口。');
+  const rootDomain = extractRootDomain(parsedUrl.hostname);
+
+  const allCompanies = db.prepare('SELECT * FROM companies').all();
+  let company = findMatchingCompany(allCompanies, {
+    companyName: cleanName,
+    shortName: cleanShort,
+    legalName: cleanLegal,
+    targetUrl: parsedUrl.href,
+    rootDomain,
+  });
+
+  if (company) {
+    if ((cleanLegal && !company.legal_name) || (String(payload.entityTag || '').trim() && !company.entity_tag)) {
+      db.prepare('UPDATE companies SET legal_name = COALESCE(NULLIF(legal_name, ""), ?), entity_tag = COALESCE(NULLIF(entity_tag, ""), ?), updated_at = ? WHERE id = ?').run(
+        cleanLegal,
+        cleanEntityTag,
+        now,
+        company.id,
+      );
+      company = db.prepare('SELECT * FROM companies WHERE id = ?').get(company.id);
+    }
+    return { company, created: false, rootDomain };
+  }
+
+  const companyId = `comp-${crypto.randomBytes(4).toString('hex')}`;
+  const badgeColor = cleanType === '初创/融资企业' ? '#7C3AED' : '#334155';
+  db.prepare(
+    `
+    INSERT INTO companies (
+      id, name, short_name, industry, company_type, official_domain,
+      official_campus_url, search_url_template, badge_color, hq_city,
+      legal_name, entity_tag, verification_status, last_verified_at, updated_at, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    companyId,
+    cleanName,
+    cleanShort,
+    cleanIndustry,
+    cleanType,
+    rootDomain,
+    parsedUrl.href,
+    parsedUrl.href,
+    badgeColor,
+    cleanCity,
+    cleanLegal,
+    cleanEntityTag,
+    'user_submitted',
+    now,
+    now,
+    cleanNotes,
+  );
+  company = db.prepare('SELECT * FROM companies WHERE id = ?').get(companyId);
+  return { company, created: true, rootDomain };
+}
+
+function insertUserJob(db, companyId, payload, parsedUrl, rootDomain, now) {
+  const jobId = `job-${crypto.randomBytes(5).toString('hex')}`;
+  const cleanCity = String(payload.city || '').trim();
+  const cleanProvince = String(payload.province || '').trim() || cleanCity;
+  const tier = inferCityTier(cleanCity);
+  const years =
+    Array.isArray(payload.graduationYears) && payload.graduationYears.length > 0
+      ? payload.graduationYears
+      : ['2027'];
+
+  db.prepare(
+    `
+    INSERT INTO jobs (
+      id, company_id, title, category, season_tag, graduation_years,
+      province, city, city_tier, official_source_url, official_domain,
+      deadline, status, is_referral, salary_range, requirements_summary,
+      sync_source, last_checked_at, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    jobId,
+    companyId,
+    String(payload.title || '').trim(),
+    String(payload.category || '').trim() || '技术研发',
+    String(payload.seasonTag || '').trim() || '2027届秋招补录',
+    JSON.stringify(years),
+    cleanProvince,
+    cleanCity,
+    tier,
+    parsedUrl.href,
+    rootDomain,
+    String(payload.deadline || '').trim() || '招满即止',
+    'open',
+    payload.isReferral ? 1 : 0,
+    String(payload.salaryRange || '').trim(),
+    String(payload.requirementsSummary || '').trim() || '详情请点击直达官网查看具体岗位职责与专业要求。',
+    'user_submitted',
+    now,
+    now,
+  );
+
+  const created = db
+    .prepare(
+      `
+    SELECT j.*, c.name AS company_name, c.short_name AS company_short_name,
+      c.industry AS company_industry, c.company_type, c.legal_name AS company_legal_name,
+      c.entity_tag AS company_entity_tag, c.badge_color,
+      c.verification_status AS company_verification_status
+    FROM jobs j JOIN companies c ON c.id = j.company_id WHERE j.id = ?
+  `,
+    )
+    .get(jobId);
+
+  return {
+    ...created,
+    graduation_years: JSON.parse(created.graduation_years || '[]'),
+    is_referral: Boolean(created.is_referral),
+  };
 }
 
 export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
@@ -194,126 +363,100 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
   });
 
   router.post('/jobs', (req, res) => {
+    const body = req.body || {};
     const {
       companyName = '',
       title = '',
-      category = '技术研发',
-      seasonTag = '2027届秋招补录',
-      graduationYears = ['2027'],
-      province = '',
       city = '',
       officialUrl = '',
-      deadline = '招满即止',
-      isReferral = false,
-      salaryRange = '',
-      requirementsSummary = '',
-      companyType = '优质企业',
-      industry = '综合行业',
-    } = req.body || {};
+    } = body;
 
-    if (!companyName.trim() || !title.trim() || !city.trim() || !officialUrl.trim()) {
+    if (!String(companyName).trim() || !String(title).trim() || !String(city).trim() || !String(officialUrl).trim()) {
       return res.status(400).json({ error: '请填写完整的公司名称、岗位名称、工作城市与官网投递链接。' });
     }
 
-    let parsedUrl;
-    try {
-      parsedUrl = new URL(officialUrl.trim());
-    } catch {
-      return res.status(400).json({ error: '官网投递链接格式无效，请以 https:// 或 http:// 开头。' });
+    const parsed = parseOfficialHttpUrl(officialUrl);
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
     }
 
-    if ((parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') || isPrivateOrLoopbackHost(parsedUrl.hostname)) {
-      return res.status(400).json({ error: '请填写有效的公开企业官网 HTTP/HTTPS 链接。' });
-    }
-
-    const rootDomain = extractRootDomain(parsedUrl.hostname);
     const now = new Date().toISOString();
+    const { company, rootDomain } = resolveOrCreateCompany(db, body, parsed.parsedUrl, now);
+    const createdJob = insertUserJob(db, company.id, body, parsed.parsedUrl, rootDomain, now);
 
-    let company = db
-      .prepare('SELECT * FROM companies WHERE official_domain = ? OR name = ? LIMIT 1')
-      .get(rootDomain, companyName.trim());
+    res.status(201).json(createdJob);
+  });
 
-    if (!company) {
-      const companyId = `comp-${crypto.randomBytes(4).toString('hex')}`;
-      const cleanName = companyName.trim();
-      db.prepare(
-        `
-        INSERT INTO companies (
-          id, name, short_name, industry, company_type, official_domain,
-          official_campus_url, badge_color, hq_city, verification_status,
-          last_verified_at, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      ).run(
-        companyId,
-        cleanName,
-        cleanName.slice(0, 4),
-        industry.trim() || '综合行业',
-        companyType.trim() || '优质企业',
-        rootDomain,
-        officialUrl.trim(),
-        '#334155',
-        city.trim(),
-        'user_submitted',
-        now,
-        '由用户自主收录并校对域名的官方校招入口。',
-      );
-      company = db.prepare('SELECT * FROM companies WHERE id = ?').get(companyId);
+  router.post('/companies', (req, res) => {
+    const body = req.body || {};
+    const cleanName = String(body.name || body.companyName || '').trim();
+    const officialUrl = String(body.officialUrl || '').trim();
+
+    if (!cleanName || !officialUrl) {
+      return res.status(400).json({ error: '请填写完整的企业名称与官方招聘/校招入口链接。' });
     }
 
-    const jobId = `job-${crypto.randomBytes(5).toString('hex')}`;
-    const cleanCity = city.trim();
-    const cleanProvince = province.trim() || cleanCity;
-    const tier = inferCityTier(cleanCity);
-    const years = Array.isArray(graduationYears) && graduationYears.length > 0 ? graduationYears : ['2027'];
+    const parsedCompanyUrl = parseOfficialHttpUrl(officialUrl);
+    if (parsedCompanyUrl.error) {
+      return res.status(400).json({ error: parsedCompanyUrl.error });
+    }
 
-    db.prepare(
-      `
-      INSERT INTO jobs (
-        id, company_id, title, category, season_tag, graduation_years,
-        province, city, city_tier, official_source_url, official_domain,
-        deadline, status, is_referral, salary_range, requirements_summary,
-        sync_source, last_checked_at, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-    ).run(
-      jobId,
-      company.id,
-      title.trim(),
-      category.trim() || '技术研发',
-      seasonTag.trim() || '2027届秋招补录',
-      JSON.stringify(years),
-      cleanProvince,
-      cleanCity,
-      tier,
-      officialUrl.trim(),
-      rootDomain,
-      deadline.trim() || '招满即止',
-      'open',
-      isReferral ? 1 : 0,
-      salaryRange.trim(),
-      requirementsSummary.trim() || '详情请点击直达官网查看具体岗位职责与专业要求。',
-      'user_submitted',
-      now,
+    const jobTitle = String(body.jobTitle || '').trim();
+    let jobUrlParsed = parsedCompanyUrl;
+    if (jobTitle && String(body.jobUrl || '').trim()) {
+      jobUrlParsed = parseOfficialHttpUrl(body.jobUrl);
+      if (jobUrlParsed.error) {
+        return res.status(400).json({ error: jobUrlParsed.error });
+      }
+    }
+
+    const now = new Date().toISOString();
+    const { company, created } = resolveOrCreateCompany(
+      db,
+      {
+        ...body,
+        companyName: cleanName,
+        companyType: body.companyType || '初创/融资企业',
+        industry: body.industry || '人工智能 / 硬科技',
+        hqCity: body.hqCity || body.city || '北京',
+      },
+      parsedCompanyUrl.parsedUrl,
       now,
     );
 
-    const created = db
-      .prepare(
-        `
-      SELECT j.*, c.name AS company_name, c.short_name AS company_short_name,
-        c.industry AS company_industry, c.company_type, c.legal_name AS company_legal_name,
-        c.entity_tag AS company_entity_tag, c.badge_color,
-        c.verification_status AS company_verification_status
-      FROM jobs j JOIN companies c ON c.id = j.company_id WHERE j.id = ?
-    `,
-      )
-      .get(jobId);
+    let createdJob = null;
+    if (jobTitle) {
+      createdJob = insertUserJob(
+        db,
+        company.id,
+        {
+          title: jobTitle,
+          category: body.category || '技术研发',
+          seasonTag: body.seasonTag || '2027届秋招补录',
+          graduationYears: body.graduationYears || ['2027'],
+          province: body.province || '',
+          city: body.city || body.hqCity || company.hq_city || '北京',
+          deadline: body.deadline || '招满即止',
+          isReferral: Boolean(body.isReferral),
+          salaryRange: body.salaryRange || '',
+          requirementsSummary: body.requirementsSummary || '',
+        },
+        jobUrlParsed.parsedUrl,
+        jobUrlParsed.rootDomain,
+        now,
+      );
+    }
 
-    res.status(201).json({
-      ...created,
-      graduation_years: JSON.parse(created.graduation_years || '[]'),
-      is_referral: Boolean(created.is_referral),
+    const summary = fetchCompanySummaryById(db, company.id);
+    res.status(created || createdJob ? 201 : 200).json({
+      company: summary,
+      job: createdJob,
+      created,
+      message: created
+        ? `已成功收录「${summary.name}」官方校招入口。`
+        : createdJob
+          ? `「${summary.name}」已在企业墙中，已同步新增其校招岗位。`
+          : `「${summary.name}」已存在于官方企业名录中。`,
     });
   });
 

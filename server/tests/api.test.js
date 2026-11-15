@@ -8,7 +8,14 @@ import { initSchema } from '../db/schema.js';
 import { upsertBuiltInCatalog } from '../db/seed.js';
 import { createApp } from '../app.js';
 import { OFFICIAL_COMPANIES, OFFICIAL_JOBS } from '../data/officialCatalog.js';
-import { extractRootDomain, isDomainMatch, verifyOfficialUrl } from '../services/officialVerifier.js';
+import {
+  extractAtsTenantPrefix,
+  extractRootDomain,
+  findMatchingCompany,
+  isDomainMatch,
+  isSharedAtsDomain,
+  verifyOfficialUrl,
+} from '../services/officialVerifier.js';
 import {
   refreshJobLifecycles,
   parseRssOrAtomFeed,
@@ -510,5 +517,155 @@ test('Sync parsers, HTTP feed sync, restricted_portal handling, and batch import
     assert.ok(statusRes.data.recentRuns.length >= 2);
   } finally {
     db.close();
+  }
+});
+
+test('Shared ATS domain isolation, POST /api/companies, and batch import isolation work accurately', async () => {
+  assert.equal(isSharedAtsDomain('feishu.cn'), true);
+  assert.equal(isSharedAtsDomain('mokahr.com'), true);
+  assert.equal(isSharedAtsDomain('kimi.com'), false);
+
+  assert.notEqual(
+    extractAtsTenantPrefix('https://startup-a.jobs.feishu.cn/campus'),
+    extractAtsTenantPrefix('https://startup-b.jobs.feishu.cn/campus'),
+  );
+  assert.notEqual(
+    extractAtsTenantPrefix('https://app.mokahr.com/campus-recruitment/biren/44727'),
+    extractAtsTenantPrefix('https://app.mokahr.com/campus-recruitment/pony/41223'),
+  );
+  assert.notEqual(
+    extractAtsTenantPrefix('https://app.mokahr.com/su/ebEyb'),
+    extractAtsTenantPrefix('https://app.mokahr.com/su/PzVxz'),
+  );
+
+  const db = createDatabase(':memory:', { seed: true });
+  const app = createApp(db);
+
+  try {
+    // Reject invalid payloads and private URLs
+    const missingFields = await invokeApp(app, 'POST', '/api/companies', { name: '缺链接公司' });
+    assert.equal(missingFields.status, 400);
+
+    const privateHost = await invokeApp(app, 'POST', '/api/companies', {
+      name: '内网测试初创',
+      officialUrl: 'http://127.0.0.1:8080/campus',
+    });
+    assert.equal(privateHost.status, 400);
+
+    // 1. Standalone startup on Feishu ATS (must NOT merge into 面壁智能 modelbest.jobs.feishu.cn)
+    const createStartupA = await invokeApp(app, 'POST', '/api/companies', {
+      name: '星尘智算初创',
+      shortName: '星尘智算',
+      legalName: '北京星尘智算科技有限公司',
+      entityTag: '初创/融资企业 · Pre-A/A轮融资',
+      companyType: '初创/融资企业',
+      industry: '具身智能与世界模型',
+      hqCity: '北京',
+      officialUrl: 'https://stardust-ai.jobs.feishu.cn/',
+      notes: '具身大模型方向早期高成长团队',
+    });
+    assert.equal(createStartupA.status, 201);
+    assert.equal(createStartupA.data.created, true);
+    assert.equal(createStartupA.data.company.name, '星尘智算初创');
+    assert.equal(createStartupA.data.company.legal_name, '北京星尘智算科技有限公司');
+    assert.equal(createStartupA.data.company.company_type, '初创/融资企业');
+    assert.notEqual(createStartupA.data.company.id, 'modelbest');
+
+    // 2. Startup with Moka portal + companion job in one transaction (must NOT merge into biren/ponyai)
+    const createStartupB = await invokeApp(app, 'POST', '/api/companies', {
+      name: '灵境计算科技',
+      legalName: '上海灵境计算科技有限公司',
+      entityTag: '初创/融资企业 · B轮及以上高成长',
+      companyType: '初创/融资企业',
+      hqCity: '上海',
+      officialUrl: 'https://app.mokahr.com/campus-recruitment/lingjing/1001',
+      jobTitle: '异构计算编译器工程师',
+      category: '技术研发',
+      city: '上海',
+      deadline: '2027-01-15',
+    });
+    assert.equal(createStartupB.status, 201);
+    assert.equal(createStartupB.data.created, true);
+    assert.equal(createStartupB.data.job.company_id, createStartupB.data.company.id);
+    assert.equal(createStartupB.data.company.open_job_count, 1);
+
+    // 3. Adding a follow-up job on same Feishu tenant attaches to 星尘智算初创 without duplicate company
+    const addJobForA = await invokeApp(app, 'POST', '/api/jobs', {
+      companyName: '星尘智算初创',
+      companyType: '初创/融资企业',
+      title: '具身仿真平台工程师',
+      city: '北京',
+      officialUrl: 'https://stardust-ai.jobs.feishu.cn/jobs/detail/42',
+    });
+    assert.equal(addJobForA.status, 201);
+    assert.equal(addJobForA.data.company_id, createStartupA.data.company.id);
+
+    // 4. Batch sync import of two startups sharing zhiye.com must keep them separate
+    const syncImport = await invokeApp(app, 'POST', '/api/sync/import', {
+      rawText: [
+        '智云光年, 算法实习生, 北京, https://zhiyun.zhiye.com/campus/1, 2027-02-01, 2027届秋招补录',
+        '深海量子, 量子控制研发, 合肥, https://deepquantum.zhiye.com/campus/2, 2027-02-01, 2027届秋招补录',
+      ].join('\n'),
+    });
+    assert.equal(syncImport.status, 201);
+    assert.equal(syncImport.data.added, 2);
+
+    const companiesRes = await invokeApp(app, 'GET', '/api/companies?q=');
+    const createdA = companiesRes.data.companies.find((c) => c.name === '星尘智算初创');
+    const createdZhiyun = companiesRes.data.companies.find((c) => c.name === '智云光年');
+    const createdQuantum = companiesRes.data.companies.find((c) => c.name === '深海量子');
+    assert.ok(createdA);
+    assert.ok(createdZhiyun);
+    assert.ok(createdQuantum);
+    assert.notEqual(createdZhiyun.id, createdQuantum.id);
+
+    // Direct findMatchingCompany sanity: different Feishu tenants never match
+    assert.equal(
+      findMatchingCompany(companiesRes.data.companies, {
+        companyName: '全新未录入AI创业',
+        targetUrl: 'https://brandnew-ai.jobs.feishu.cn/',
+        rootDomain: 'feishu.cn',
+      }),
+      null,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('Expanded built-in startup catalog satisfies count, entity metadata, and domain alignment', () => {
+  assert.ok(OFFICIAL_COMPANIES.length >= 189, `Expected >= 189 companies, got ${OFFICIAL_COMPANIES.length}`);
+  assert.ok(OFFICIAL_JOBS.length >= 270, `Expected >= 270 jobs, got ${OFFICIAL_JOBS.length}`);
+
+  const startups = OFFICIAL_COMPANIES.filter((c) => c.company_type === '初创/融资企业');
+  assert.ok(startups.length >= 31, `Expected >= 31 verified startups, got ${startups.length}`);
+
+  const companyMap = new Map();
+  for (const company of OFFICIAL_COMPANIES) {
+    assert.ok(!companyMap.has(company.id), `Duplicate company id: ${company.id}`);
+    companyMap.set(company.id, company);
+    assert.ok(company.legal_name && company.legal_name.length >= 4, `Missing legal_name on ${company.id}`);
+    assert.ok(company.entity_tag && company.entity_tag.length >= 4, `Missing entity_tag on ${company.id}`);
+    const portalHost = new URL(company.official_campus_url).hostname;
+    assert.equal(
+      isDomainMatch(portalHost, company.official_domain),
+      true,
+      `Portal ${company.official_campus_url} does not match domain ${company.official_domain}`,
+    );
+  }
+
+  for (const startup of startups) {
+    const startupJobs = OFFICIAL_JOBS.filter((job) => job.company_id === startup.id);
+    assert.ok(startupJobs.length >= 1, `Startup ${startup.id} should have at least 1 built-in job`);
+  }
+
+  for (const job of OFFICIAL_JOBS) {
+    assert.ok(companyMap.has(job.company_id), `Job ${job.id} references unknown company ${job.company_id}`);
+    const jobHost = new URL(job.official_source_url).hostname;
+    assert.equal(
+      isDomainMatch(jobHost, job.official_domain),
+      true,
+      `Job ${job.id} URL ${job.official_source_url} mismatches domain ${job.official_domain}`,
+    );
   }
 });

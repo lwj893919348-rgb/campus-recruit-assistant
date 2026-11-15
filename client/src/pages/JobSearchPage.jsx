@@ -23,8 +23,49 @@ import {
   GRAD_YEAR_OPTIONS,
   COMPANY_TYPE_OPTIONS,
   JOB_CATEGORY_OPTIONS,
+  STARTUP_ENTITY_PRESETS,
   STAGE_MAP,
 } from '../data/constants.js';
+
+function getTianyanchaSearchUrl(keyword = '') {
+  return `https://www.tianyancha.com/search?key=${encodeURIComponent(String(keyword || '').trim())}`;
+}
+
+const INITIAL_NEW_JOB = {
+  companyName: '',
+  companyType: '优质企业',
+  legalName: '',
+  entityTag: '',
+  title: '',
+  city: '北京',
+  province: '北京',
+  category: '技术研发',
+  seasonTag: '2027届秋招补录',
+  graduationYears: ['2027'],
+  officialUrl: '',
+  deadline: '招满即止',
+  isReferral: false,
+  requirementsSummary: '',
+};
+
+const INITIAL_NEW_COMPANY = {
+  name: '',
+  shortName: '',
+  legalName: '',
+  entityTag: '初创/融资企业 · Pre-A/A轮融资',
+  companyType: '初创/融资企业',
+  industry: '人工智能 / 硬科技',
+  hqCity: '北京',
+  officialUrl: '',
+  notes: '',
+  addInitialJob: false,
+  jobTitle: '',
+  category: '技术研发',
+  seasonTag: '2027届秋招补录',
+  city: '北京',
+  deadline: '招满即止',
+  requirementsSummary: '',
+};
 
 const VERIFY_BADGE_MAP = {
   verified_official: { text: '官方库核验', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
@@ -65,19 +106,11 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
   const [portalKeyword, setPortalKeyword] = useState('');
 
   const [addModalOpen, setAddModalOpen] = useState(false);
-  const [newJob, setNewJob] = useState({
-    companyName: '',
-    title: '',
-    city: '北京',
-    province: '北京',
-    category: '技术研发',
-    seasonTag: '2027届秋招补录',
-    graduationYears: ['2027'],
-    officialUrl: '',
-    deadline: '招满即止',
-    isReferral: false,
-    requirementsSummary: '',
-  });
+  const [newJob, setNewJob] = useState(INITIAL_NEW_JOB);
+
+  const [companyModalOpen, setCompanyModalOpen] = useState(false);
+  const [creatingCompany, setCreatingCompany] = useState(false);
+  const [newCompany, setNewCompany] = useState(INITIAL_NEW_COMPANY);
 
   useEffect(() => {
     if (initialCity) {
@@ -217,25 +250,35 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
     e.preventDefault();
     try {
       await api.createJob(newJob);
-      onToast('success', '已校验根域名并收录至官网校招池！');
+      onToast('success', '已校验域名隔离并收录至官网校招池！');
       setAddModalOpen(false);
-      setNewJob({
-        companyName: '',
-        title: '',
-        city: '北京',
-        province: '北京',
-        category: '技术研发',
-        seasonTag: '2027届秋招补录',
-        graduationYears: ['2027'],
-        officialUrl: '',
-        deadline: '招满即止',
-        isReferral: false,
-        requirementsSummary: '',
-      });
+      setNewJob(INITIAL_NEW_JOB);
       loadJobs();
       loadCompanies();
     } catch (err) {
       onToast('error', err.message);
+    }
+  }
+
+  async function handleCreateCompany(e) {
+    e.preventDefault();
+    setCreatingCompany(true);
+    try {
+      const payload = {
+        ...newCompany,
+        jobTitle: newCompany.addInitialJob ? newCompany.jobTitle : '',
+      };
+      const res = await api.createCompany(payload);
+      onToast('success', res.message || `已收录「${newCompany.name}」官方入口！`);
+      setCompanyModalOpen(false);
+      setCompanyWallType(res.company?.company_type || '初创/融资企业');
+      setSubView('companies');
+      setNewCompany(INITIAL_NEW_COMPANY);
+      await Promise.all([loadCompanies(), loadJobs()]);
+    } catch (err) {
+      onToast('error', err.message);
+    } finally {
+      setCreatingCompany(false);
     }
   }
 
@@ -302,6 +345,15 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
           >
             <Database className="h-3.5 w-3.5" />
             信息更新中心
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setCompanyModalOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100"
+          >
+            <Building2 className="h-3.5 w-3.5" />
+            添加初创/正规企业
           </button>
 
           <button
@@ -697,18 +749,28 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
           <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
               <div className="text-xs text-slate-600">
-                共收录 <strong>{companies.length}</strong> 家正规企业官方校招入口（含大厂、专精特新、科创板/A股及央国企，当前筛选{' '}
+                共收录 <strong>{companies.length}</strong> 家正规企业官方校招入口（含大厂、高成长初创/融资企业、专精特新及央国企，当前筛选{' '}
                 <strong>{filteredCompanies.length}</strong> 家），每家均附带工商注册主体与天眼查核验直链。
               </div>
-              <button
-                type="button"
-                onClick={handleBatchVerify}
-                disabled={batchVerifying}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${batchVerifying ? 'animate-spin' : ''}`} />
-                {batchVerifying ? '批量核验官网状态中...' : '实时批量核验官网'}
-              </button>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCompanyModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  添加初创/正规企业
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBatchVerify}
+                  disabled={batchVerifying}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${batchVerifying ? 'animate-spin' : ''}`} />
+                  {batchVerifying ? '批量核验官网状态中...' : '实时批量核验官网'}
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
@@ -813,7 +875,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                     <span className="text-xs text-slate-500">在招关联 {c.open_job_count} 个岗位</span>
                     <div className="flex flex-wrap items-center gap-1.5">
                       <a
-                        href={`https://www.tianyancha.com/search?key=${encodeURIComponent(c.legal_name || c.name)}`}
+                        href={getTianyanchaSearchUrl(c.legal_name || c.name)}
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
@@ -858,7 +920,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
       {/* Custom Official Job Import Modal */}
       {addModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
               <div className="flex items-center gap-2">
                 <Building2 className="h-4 w-4 text-blue-600" />
@@ -875,12 +937,12 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
             <form onSubmit={handleCreateJob} className="space-y-3.5 p-5">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">公司全称 *</label>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">企业名称 *</label>
                   <input
                     required
                     value={newJob.companyName}
                     onChange={(e) => setNewJob({ ...newJob, companyName: e.target.value })}
-                    placeholder="如：海康威视"
+                    placeholder="如：面壁智能 / 海康威视"
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </div>
@@ -890,20 +952,70 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                     required
                     value={newJob.title}
                     onChange={(e) => setNewJob({ ...newJob, title: e.target.value })}
-                    placeholder="如：嵌入式软件工程师"
+                    placeholder="如：大模型推理研发工程师"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">企业类型</label>
+                  <select
+                    value={newJob.companyType}
+                    onChange={(e) => setNewJob({ ...newJob, companyType: e.target.value })}
+                    className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="优质企业">优质企业</option>
+                    {COMPANY_TYPE_OPTIONS.filter((t) => t !== '全部').map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">融资/主体资质标签（可选）</label>
+                  <input
+                    value={newJob.entityTag}
+                    onChange={(e) => setNewJob({ ...newJob, entityTag: e.target.value })}
+                    placeholder="如：初创/融资企业 · A轮融资"
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">官网校招链接（自动提取根域名认证）*</label>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="text-xs font-medium text-slate-700">工商主体全称（天眼查核对）</label>
+                  <a
+                    href={getTianyanchaSearchUrl(newJob.legalName || newJob.companyName)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 hover:text-amber-800 hover:underline"
+                  >
+                    <ShieldCheck className="h-3 w-3" />
+                    去天眼查核对主体 ↗
+                  </a>
+                </div>
+                <input
+                  value={newJob.legalName}
+                  onChange={(e) => setNewJob({ ...newJob, legalName: e.target.value })}
+                  placeholder="如：北京面壁智能科技有限责任公司（若企业壁未收录将自动建档）"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  官网或专属 ATS 校招链接（支持飞书 / Moka / 北森租户隔离）*
+                </label>
                 <input
                   required
                   type="url"
                   value={newJob.officialUrl}
                   onChange={(e) => setNewJob({ ...newJob, officialUrl: e.target.value })}
-                  placeholder="https://campushr.hikvision.com/..."
+                  placeholder="https://xxx.jobs.feishu.cn/... 或 https://app.mokahr.com/campus-recruitment/..."
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
@@ -915,7 +1027,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                     required
                     value={newJob.city}
                     onChange={(e) => setNewJob({ ...newJob, city: e.target.value })}
-                    placeholder="杭州"
+                    placeholder="北京"
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </div>
@@ -924,7 +1036,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                   <input
                     value={newJob.province}
                     onChange={(e) => setNewJob({ ...newJob, province: e.target.value })}
-                    placeholder="浙江"
+                    placeholder="北京"
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </div>
@@ -994,6 +1106,254 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                 >
                   校验并保存到校招库
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Startup / Enterprise Modal */}
+      {companyModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-xs">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-violet-600" />
+                <h3 className="text-base font-semibold text-slate-900">添加初创 / 正规企业官方入口</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCompanyModalOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCompany} className="space-y-3.5 p-5">
+              <div className="rounded-xl border border-violet-100 bg-violet-50/70 px-3.5 py-2.5 text-xs leading-relaxed text-violet-900">
+                支持添加尚未在库中的高成长初创团队与垂直名企！若使用 <strong>飞书 (jobs.feishu.cn)</strong>、
+                <strong>Moka (app.mokahr.com)</strong>、<strong>北森 (zhiye.com)</strong>、<strong>红海/Hotjob</strong> 等第三方招聘门户，系统会自动按租户子域与路径独立建档，不再与已有企业串台。
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">企业常用名称 *</label>
+                  <input
+                    required
+                    value={newCompany.name}
+                    onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })}
+                    placeholder="如：智算初创科技 / 星尘AI"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">简称（徽标显示，可选）</label>
+                  <input
+                    value={newCompany.shortName}
+                    onChange={(e) => setNewCompany({ ...newCompany, shortName: e.target.value })}
+                    placeholder="留空默认取名称前 6 字"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">企业分类</label>
+                  <select
+                    value={newCompany.companyType}
+                    onChange={(e) => setNewCompany({ ...newCompany, companyType: e.target.value })}
+                    className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm focus:border-violet-500 focus:outline-none"
+                  >
+                    {COMPANY_TYPE_OPTIONS.filter((t) => t !== '全部').map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">所在行业</label>
+                  <input
+                    value={newCompany.industry}
+                    onChange={(e) => setNewCompany({ ...newCompany, industry: e.target.value })}
+                    placeholder="人工智能 / 具身机器人"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">总部城市</label>
+                  <input
+                    value={newCompany.hqCity}
+                    onChange={(e) => setNewCompany({ ...newCompany, hqCity: e.target.value })}
+                    placeholder="北京 / 上海 / 深圳"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="text-xs font-medium text-slate-700">工商注册主体全称（建议天眼查核对）</label>
+                  <a
+                    href={getTianyanchaSearchUrl(newCompany.legalName || newCompany.name)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 hover:text-amber-800 hover:underline"
+                  >
+                    <ShieldCheck className="h-3 w-3" />
+                    去天眼查核对主体 ↗
+                  </a>
+                </div>
+                <input
+                  value={newCompany.legalName}
+                  onChange={(e) => setNewCompany({ ...newCompany, legalName: e.target.value })}
+                  placeholder="如：北京某某人工智能科技有限公司（留空亦可保存，建议核实统一信用主体）"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">融资阶段 / 资质标签</label>
+                <input
+                  value={newCompany.entityTag}
+                  onChange={(e) => setNewCompany({ ...newCompany, entityTag: e.target.value })}
+                  placeholder="如：初创/融资企业 · A轮融资"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+                />
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {STARTUP_ENTITY_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setNewCompany({ ...newCompany, entityTag: preset })}
+                      className={`rounded-md border px-2 py-0.5 text-[11px] transition ${
+                        newCompany.entityTag === preset
+                          ? 'border-violet-300 bg-violet-50 font-medium text-violet-800'
+                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      {preset.replace('初创/融资企业 · ', '')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">官方招聘 / 校招主页链接 *</label>
+                <input
+                  required
+                  type="url"
+                  value={newCompany.officialUrl}
+                  onChange={(e) => setNewCompany({ ...newCompany, officialUrl: e.target.value })}
+                  placeholder="https://xxx.jobs.feishu.cn/ 或 https://careers.example.com"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">企业简介 / 备忘说明</label>
+                <input
+                  value={newCompany.notes}
+                  onChange={(e) => setNewCompany({ ...newCompany, notes: e.target.value })}
+                  placeholder="记录主打产品、融资背景、内推或面试风格备注..."
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={newCompany.addInitialJob}
+                    onChange={(e) => setNewCompany({ ...newCompany, addInitialJob: e.target.checked })}
+                    className="rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                  />
+                  同时收录该公司一个在招/内推岗位（可选）
+                </label>
+
+                {newCompany.addInitialJob && (
+                  <div className="mt-3 space-y-2.5 border-t border-slate-200 pt-3">
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-slate-700">岗位名称 *</label>
+                        <input
+                          required
+                          value={newCompany.jobTitle}
+                          onChange={(e) => setNewCompany({ ...newCompany, jobTitle: e.target.value })}
+                          placeholder="如：AI Agent 全栈工程师"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:border-violet-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-slate-700">工作城市</label>
+                        <input
+                          value={newCompany.city}
+                          onChange={(e) => setNewCompany({ ...newCompany, city: e.target.value })}
+                          placeholder="北京"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:border-violet-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-slate-700">岗位类别</label>
+                        <select
+                          value={newCompany.category}
+                          onChange={(e) => setNewCompany({ ...newCompany, category: e.target.value })}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs focus:border-violet-500 focus:outline-none"
+                        >
+                          {JOB_CATEGORY_OPTIONS.filter((c) => c !== '全部').map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-slate-700">招聘季</label>
+                        <select
+                          value={newCompany.seasonTag}
+                          onChange={(e) => setNewCompany({ ...newCompany, seasonTag: e.target.value })}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs focus:border-violet-500 focus:outline-none"
+                        >
+                          {SEASON_OPTIONS.filter((s) => s !== '全部').map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-slate-700">截止时间</label>
+                        <input
+                          value={newCompany.deadline}
+                          onChange={(e) => setNewCompany({ ...newCompany, deadline: e.target.value })}
+                          placeholder="招满即止"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:border-violet-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setCompanyModalOpen(false)}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingCompany}
+                  className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60"
+                >
+                  {creatingCompany ? '保存中...' : '校验并加入企业墙'}
                 </button>
               </div>
             </form>
