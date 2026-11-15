@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { getCompanyAtsSupport } from '../../../shared/atsPlatforms.js';
+import { resolveJobOfficialTarget } from '../../../shared/jobLinkResolver.js';
 import {
   Search,
   MapPin,
@@ -105,6 +106,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
   const [experienceReq, setExperienceReq] = useState('全部');
   const [onlyOpen, setOnlyOpen] = useState(true);
   const [onlyReferral, setOnlyReferral] = useState(false);
+  const [onlyExactDetail, setOnlyExactDetail] = useState(false);
 
   const [jobs, setJobs] = useState([]);
   const [facets, setFacets] = useState({
@@ -161,6 +163,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
         experienceReq,
         onlyOpen: onlyOpen ? '1' : '',
         onlyReferral: onlyReferral ? '1' : '',
+        onlyExactDetail: onlyExactDetail ? '1' : '',
       });
       setJobs(data.jobs);
       setFacets(data.facets);
@@ -181,6 +184,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
     experienceReq,
     onlyOpen,
     onlyReferral,
+    onlyExactDetail,
     onToast,
   ]);
 
@@ -237,6 +241,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
     setExperienceReq('全部');
     setOnlyOpen(true);
     setOnlyReferral(false);
+    setOnlyExactDetail(false);
   }
 
   async function handleSubscribeCompany(company) {
@@ -618,69 +623,71 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
             </div>
 
             {/* Secondary Dimension Filters */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <div>
-                <label className="mb-1 block text-[11px] font-medium text-slate-500">校招季 / 类型</label>
-                <select
-                  value={season}
-                  onChange={(e) => setSeason(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
-                >
-                  {SEASON_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+            <div className="space-y-2.5">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-slate-500">校招季 / 类型</label>
+                  <select
+                    value={season}
+                    onChange={(e) => setSeason(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
+                  >
+                    {SEASON_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-slate-500">面向毕业届别</label>
+                  <select
+                    value={gradYear}
+                    onChange={(e) => setGradYear(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
+                  >
+                    {GRAD_YEAR_OPTIONS.map((y) => (
+                      <option key={y} value={y}>
+                        {y === '全部' ? '全部届别' : `${y} 届毕业生`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-slate-500">企业性质</label>
+                  <select
+                    value={companyType}
+                    onChange={(e) => setCompanyType(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
+                  >
+                    {COMPANY_TYPE_OPTIONS.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-slate-500">岗位方向</label>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
+                  >
+                    {JOB_CATEGORY_OPTIONS.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="mb-1 block text-[11px] font-medium text-slate-500">面向毕业届别</label>
-                <select
-                  value={gradYear}
-                  onChange={(e) => setGradYear(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
-                >
-                  {GRAD_YEAR_OPTIONS.map((y) => (
-                    <option key={y} value={y}>
-                      {y === '全部' ? '全部届别' : `${y} 届毕业生`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-[11px] font-medium text-slate-500">企业性质</label>
-                <select
-                  value={companyType}
-                  onChange={(e) => setCompanyType(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
-                >
-                  {COMPANY_TYPE_OPTIONS.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-[11px] font-medium text-slate-500">岗位方向</label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
-                >
-                  {JOB_CATEGORY_OPTIONS.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-end">
-                <label className="flex w-full cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-1.5 text-xs text-slate-700">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-1.5 text-xs text-slate-700">
                   <input
                     type="checkbox"
                     checked={onlyOpen}
@@ -689,10 +696,8 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                   />
                   <span>仅看网申进行中</span>
                 </label>
-              </div>
 
-              <div className="flex items-end">
-                <label className="flex w-full cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-1.5 text-xs text-slate-700">
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-1.5 text-xs text-slate-700">
                   <input
                     type="checkbox"
                     checked={onlyReferral}
@@ -700,6 +705,25 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                   />
                   <span>仅看支持内推</span>
+                </label>
+
+                <label
+                  className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                    onlyExactDetail
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800 shadow-2xs'
+                      : 'border-emerald-200/80 bg-emerald-50/40 text-emerald-800 hover:bg-emerald-50'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={onlyExactDetail}
+                    onChange={(e) => setOnlyExactDetail(e.target.checked)}
+                    className="rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>仅看官网原岗（直达详情页）</span>
+                  <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-emerald-800">
+                    {facets.exactDetailCount || 0}
+                  </span>
                 </label>
               </div>
             </div>
@@ -739,8 +763,8 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
           <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200/80 bg-emerald-50/50 px-4 py-2.5 text-xs text-emerald-900">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
             <span>
-              <strong>官网防坑与公众号核验提示：</strong>
-              无论校招、社招还是实习，所有标注绿色「官网认证」的链接均直指企业官方网申主域名；如看到微信公众号推送的招聘信息，可将正文复制到「信息更新中心」智能提取岗位，但最终务必通过企业官方域名网申投递。
+              <strong>官网详情直达与分级核验说明：</strong>
+              标有绿色「官网原岗 · 直达详情」的职位来自北森 / 大易 HotJob 等官方直连接口，名称与官网完全一致，点击即直达该岗位详情页；其余「参考方向」岗位会提取核心词为您跳转对应企业官网搜索页核验，所有投递入口均限制在企业官方域名。
             </span>
           </div>
 
@@ -770,6 +794,19 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                   VERIFY_BADGE_MAP[job.company_verification_status] || VERIFY_BADGE_MAP.verified_official;
                 const liveResult = verifyFeedbackMap[job.id];
                 const trackedInfo = job.tracked ? STAGE_MAP[job.tracked.status] : null;
+                const targetInfo = resolveJobOfficialTarget(job);
+                const tierBadgeClass =
+                  targetInfo.targetType === 'detail'
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                    : targetInfo.targetType === 'search'
+                      ? 'border-amber-200 bg-amber-50 text-amber-800'
+                      : 'border-slate-200 bg-slate-100 text-slate-700';
+                const actionBtnClass =
+                  targetInfo.targetType === 'detail'
+                    ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
+                    : targetInfo.targetType === 'search'
+                      ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100';
 
                 return (
                   <article
@@ -796,6 +833,12 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                               >
                                 <ShieldCheck className="h-3 w-3" />
                                 官网 · {job.official_domain}
+                              </span>
+                              <span
+                                title={targetInfo.tooltip}
+                                className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${tierBadgeClass}`}
+                              >
+                                {targetInfo.badgeText}
                               </span>
                               {job.company_entity_tag && (
                                 <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
@@ -921,13 +964,13 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                         </button>
 
                         <a
-                          href={job.official_source_url}
+                          href={targetInfo.href}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                          title={targetInfo.tooltip}
+                          className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${actionBtnClass}`}
                         >
-                          {job.recruit_type === '社会招聘' ? '直达社招官网' : '直达官网'}{' '}
-                          <ExternalLink className="h-3 w-3" />
+                          {targetInfo.buttonLabel} <ExternalLink className="h-3 w-3" />
                         </a>
 
                         {trackedInfo ? (
@@ -940,7 +983,7 @@ export function JobSearchPage({ initialCity = '', onClearInitialCity, onQuickTra
                         ) : (
                           <button
                             type="button"
-                            onClick={() => onQuickTrack(job)}
+                            onClick={() => onQuickTrack({ ...job, official_source_url: targetInfo.href })}
                             className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
                           >
                             <Plus className="h-3.5 w-3.5" />

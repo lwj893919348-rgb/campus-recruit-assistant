@@ -363,5 +363,67 @@ export function createSyncRouter(db, options = {}) {
     return res.status(201).json({ source: createdRow, created: true, atsInfo });
   });
 
+  // POST /api/sync/sources/subscribe-all-ats -> bulk-subscribe all auto-syncable open-ATS companies
+  router.post('/sync/sources/subscribe-all-ats', (_req, res) => {
+    const companies = db.prepare('SELECT * FROM companies').all();
+    const existingRows = db.prepare('SELECT * FROM sync_sources').all();
+    const byUrl = new Map(existingRows.map((row) => [row.url, row]));
+    const now = new Date().toISOString();
+
+    const insertStmt = db.prepare(
+      `
+      INSERT INTO sync_sources (
+        id, name, source_type, url, default_company_id, enabled, auto_interval_hours,
+        last_status, last_message, items_count, created_at
+      )
+      VALUES (?, ?, 'ats_auto', ?, ?, 1, 6, 'idle', '已批量订阅官方 ATS 自动追新，可直接一键同步', 0, ?)
+      `,
+    );
+    const enableStmt = db.prepare('UPDATE sync_sources SET enabled = 1 WHERE id = ?');
+
+    let createdCount = 0;
+    let reenabledCount = 0;
+    let totalSupported = 0;
+    const sources = [];
+
+    db.exec('BEGIN;');
+    try {
+      for (const company of companies) {
+        const atsInfo = getCompanyAtsSupport(company);
+        if (!atsInfo?.autoSyncable || !atsInfo.url) continue;
+        totalSupported += 1;
+
+        const existing = byUrl.get(atsInfo.url);
+        if (existing) {
+          if (!existing.enabled) {
+            enableStmt.run(existing.id);
+            reenabledCount += 1;
+          }
+          sources.push({ ...existing, enabled: 1 });
+          continue;
+        }
+
+        const id = `src-ats-${nodeCrypto.randomUUID().slice(0, 8)}`;
+        const name = `${company.short_name || company.name} · ${atsInfo.label || '官方 ATS'}`;
+        insertStmt.run(id, name, atsInfo.url, company.id, now);
+        const createdRow = db.prepare('SELECT * FROM sync_sources WHERE id = ?').get(id);
+        byUrl.set(atsInfo.url, createdRow);
+        sources.push(createdRow);
+        createdCount += 1;
+      }
+      db.exec('COMMIT;');
+    } catch (err) {
+      db.exec('ROLLBACK;');
+      throw err;
+    }
+
+    return res.json({
+      createdCount,
+      reenabledCount,
+      totalSupported,
+      sources,
+    });
+  });
+
   return router;
 }

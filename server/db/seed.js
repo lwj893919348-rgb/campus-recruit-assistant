@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import {
   CATALOG_UPDATED_AT,
   DEFAULT_SYNC_SOURCES,
@@ -364,7 +365,23 @@ const DEMO_APPLICATIONS = [
  * into an existing or empty database without touching user-created resumes,
  * applications, or user_submitted jobs.
  */
-export function upsertBuiltInCatalog(db) {
+function loadLiveAtsSnapshot(snapshotOverride) {
+  if (snapshotOverride !== undefined) return snapshotOverride;
+  try {
+    const raw = fs.readFileSync(new URL('../data/liveAtsSnapshot.json', import.meta.url), 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function upsertBuiltInCatalog(db, options = {}) {
+  const { snapshotOverride } = options || {};
+  const snapshot = loadLiveAtsSnapshot(snapshotOverride);
+  const snapshotJobs = Array.isArray(snapshot?.jobs) ? snapshot.jobs : [];
+  const coveredCompanyIds = new Set(snapshotJobs.map((j) => j.company_id).filter(Boolean));
+  const snapshotJobIdSet = new Set(snapshotJobs.map((j) => j.id).filter(Boolean));
+
   const existingCompanyIds = new Set(db.prepare('SELECT id FROM companies').all().map((r) => r.id));
   const existingJobIds = new Set(db.prepare('SELECT id FROM jobs').all().map((r) => r.id));
 
@@ -405,6 +422,7 @@ export function upsertBuiltInCatalog(db) {
       sync_source, last_checked_at, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
+      external_id = excluded.external_id,
       recruit_type = excluded.recruit_type,
       experience_req = excluded.experience_req,
       title = excluded.title,
@@ -420,6 +438,7 @@ export function upsertBuiltInCatalog(db) {
       is_referral = excluded.is_referral,
       salary_range = excluded.salary_range,
       requirements_summary = excluded.requirements_summary,
+      sync_source = excluded.sync_source,
       last_checked_at = excluded.last_checked_at
   `);
 
@@ -460,7 +479,38 @@ export function upsertBuiltInCatalog(db) {
       else companiesAdded += 1;
     }
 
-    for (const j of OFFICIAL_JOBS) {
+    if (coveredCompanyIds.size > 0) {
+      const cleanupPlaceholderStmt = db.prepare(`
+        DELETE FROM jobs
+        WHERE company_id = ?
+          AND sync_source = 'verified_registry'
+          AND id NOT IN (SELECT job_id FROM applications WHERE job_id IS NOT NULL)
+      `);
+      const existingSnapRowsStmt = db.prepare(`
+        SELECT id FROM jobs
+        WHERE company_id = ?
+          AND (sync_source = 'live_ats_snapshot' OR id LIKE 'snap-%')
+          AND id NOT IN (SELECT job_id FROM applications WHERE job_id IS NOT NULL)
+      `);
+      const deleteByIdStmt = db.prepare('DELETE FROM jobs WHERE id = ?');
+
+      for (const cid of coveredCompanyIds) {
+        cleanupPlaceholderStmt.run(cid);
+        const existingSnapRows = existingSnapRowsStmt.all(cid);
+        for (const row of existingSnapRows) {
+          if (!snapshotJobIdSet.has(row.id)) {
+            deleteByIdStmt.run(row.id);
+          }
+        }
+      }
+    }
+
+    const jobsToUpsert = [
+      ...OFFICIAL_JOBS.filter((j) => !coveredCompanyIds.has(j.company_id)),
+      ...snapshotJobs,
+    ];
+
+    for (const j of jobsToUpsert) {
       upsertJob.run(
         j.id,
         j.company_id,
@@ -470,19 +520,19 @@ export function upsertBuiltInCatalog(db) {
         j.title,
         j.category,
         j.season_tag,
-        JSON.stringify(j.graduation_years),
+        JSON.stringify(j.graduation_years || []),
         j.province,
         j.city,
-        j.city_tier,
+        j.city_tier || '一线',
         j.official_source_url,
         j.official_domain,
         j.deadline,
-        j.status,
-        j.is_referral,
-        j.salary_range,
-        j.requirements_summary,
-        j.sync_source,
-        NOW_ISO,
+        j.status || 'open',
+        j.is_referral ? 1 : 0,
+        j.salary_range || '',
+        j.requirements_summary || '',
+        j.sync_source || 'verified_registry',
+        j.last_checked_at || NOW_ISO,
         NOW_ISO,
       );
       if (existingJobIds.has(j.id)) jobsUpdated += 1;
@@ -501,7 +551,7 @@ export function upsertBuiltInCatalog(db) {
         NOW_ISO,
         src.last_status,
         src.last_message,
-        src.items_count,
+        src.id === 'src-builtin-registry' ? jobsToUpsert.length : src.items_count,
         NOW_ISO,
       );
     }

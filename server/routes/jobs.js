@@ -7,6 +7,7 @@ import {
   verifyOfficialUrl,
 } from '../services/officialVerifier.js';
 import { inferCategory, inferRecruitTypeAndExp } from '../../shared/jobParser.js';
+import { resolveJobOfficialTarget } from '../../shared/jobLinkResolver.js';
 
 function inferCityTier(city = '') {
   if (['北京', '上海', '深圳', '广州'].includes(city)) return '一线城市';
@@ -240,6 +241,7 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
       companyId = '',
       onlyOpen = '',
       onlyReferral = '',
+      onlyExactDetail = '',
       sort = 'latest',
     } = req.query;
 
@@ -348,18 +350,33 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
       .all();
     const trackedMap = Object.fromEntries(trackedApps.map((a) => [a.job_id, { id: a.id, status: a.status }]));
 
-    let jobs = rows.map((row) => ({
-      ...row,
-      graduation_years: JSON.parse(row.graduation_years || '[]'),
-      is_referral: Boolean(row.is_referral),
-      tracked: trackedMap[row.id] || null,
-    }));
+    let jobs = rows.map((row) => {
+      const base = {
+        ...row,
+        graduation_years: JSON.parse(row.graduation_years || '[]'),
+        is_referral: Boolean(row.is_referral),
+        tracked: trackedMap[row.id] || null,
+      };
+      const targetInfo = resolveJobOfficialTarget(base);
+      return {
+        ...base,
+        link_target_type: targetInfo.targetType,
+        is_exact_detail: targetInfo.isExactDetail,
+        resolved_official_url: targetInfo.href,
+        resolved_link_label: targetInfo.buttonLabel,
+        resolved_badge_text: targetInfo.badgeText,
+        resolved_search_keyword: targetInfo.searchKeyword,
+      };
+    });
 
     if (recruitType && recruitType !== '全部') {
       jobs = jobs.filter((item) => item.recruit_type === recruitType);
     }
     if (experienceReq && experienceReq !== '全部') {
       jobs = jobs.filter((item) => item.experience_req === experienceReq);
+    }
+    if (onlyExactDetail === '1' || onlyExactDetail === 'true') {
+      jobs = jobs.filter((item) => item.is_exact_detail);
     }
 
     const cityFacets = db
@@ -399,6 +416,25 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
       .prepare('SELECT experience_req AS value, COUNT(*) AS count FROM jobs GROUP BY experience_req ORDER BY count DESC')
       .all();
 
+    const exactDetailFacetRows = db
+      .prepare(
+        `
+      SELECT
+        j.id, j.title, j.recruit_type, j.official_source_url, j.sync_source, j.external_id,
+        c.name AS company_name, c.short_name AS company_short_name,
+        c.official_campus_url AS company_portal_url,
+        c.official_social_url AS company_social_url,
+        c.search_url_template AS company_search_url_template
+      FROM jobs j
+      JOIN companies c ON c.id = j.company_id
+    `,
+      )
+      .all();
+    const exactDetailCount = exactDetailFacetRows.reduce(
+      (sum, row) => (resolveJobOfficialTarget(row).isExactDetail ? sum + 1 : sum),
+      0,
+    );
+
     res.json({
       total: jobs.length,
       jobs,
@@ -409,6 +445,7 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
         companyTypes: companyTypeFacets,
         recruitTypes: recruitTypeFacets,
         experienceReqs: experienceFacets,
+        exactDetailCount,
       },
     });
   });

@@ -10,6 +10,7 @@
     "dev:client": "vite",
     "build": "vite build",
     "export:static": "node --no-warnings scripts/export-static-data.mjs",
+    "sync:snapshot": "node --no-warnings scripts/sync-live-ats-snapshot.mjs",
     "build:pages": "npm run export:static && vite build --mode pages",
     "start": "node --no-warnings server/index.js",
     "preview": "vite preview",

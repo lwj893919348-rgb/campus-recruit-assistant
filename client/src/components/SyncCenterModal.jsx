@@ -11,6 +11,7 @@ import {
   Trash2,
   X,
   Database,
+  Sparkles,
 } from 'lucide-react';
 import { api } from '../api/client';
 
@@ -66,6 +67,7 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
   const [statusData, setStatusData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [runningId, setRunningId] = useState(null);
+  const [subscribingAll, setSubscribingAll] = useState(false);
   const [showAddSource, setShowAddSource] = useState(false);
   const [sourceForm, setSourceForm] = useState({
     name: '',
@@ -137,6 +139,31 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
       await loadStatus();
     } catch (err) {
       onToast('error', err.message);
+    }
+  }
+
+  async function handleSubscribeAllAts() {
+    setSubscribingAll(true);
+    try {
+      const res = await api.subscribeAllAtsSources();
+      if (res?.staticModeNote || api?.isStaticMode) {
+        onToast(
+          'info',
+          res?.staticModeNote ||
+            `已保存全部 ${res?.totalSupported || 28} 家可直达企业 ATS 订阅配置；实时同步需运行本地后端 npm run start。`,
+        );
+      } else {
+        onToast(
+          'success',
+          `已启用全部 ${res?.totalSupported || 0} 家可直达 ATS 企业（新增 ${res?.createdCount || 0} 家、恢复 ${res?.reenabledCount || 0} 家），点击右上角「立即全部同步」即可获取最新官网原岗！`,
+        );
+      }
+      await loadStatus();
+      onSynced?.();
+    } catch (err) {
+      onToast('error', `批量订阅失败：${err.message}`);
+    } finally {
+      setSubscribingAll(false);
     }
   }
 
@@ -331,16 +358,27 @@ export default function SyncCenterModal({ isOpen, onClose, onSynced, onToast, co
           )}
           {activeTab === 'sources' ? (
             <>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-xs font-semibold text-slate-700">已配置信息源与巡检策略</div>
-                <button
-                  type="button"
-                  onClick={() => setShowAddSource((v) => !v)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  {showAddSource ? '收起表单' : '添加外部订阅源'}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSubscribeAllAts}
+                    disabled={subscribingAll}
+                    className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                  >
+                    <Sparkles className={`h-3.5 w-3.5 ${subscribingAll ? 'animate-spin' : ''}`} />
+                    {subscribingAll ? '订阅中...' : '一键订阅全部可直达 ATS 企业'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddSource((v) => !v)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {showAddSource ? '收起表单' : '添加外部订阅源'}
+                  </button>
+                </div>
               </div>
 
               {showAddSource && (

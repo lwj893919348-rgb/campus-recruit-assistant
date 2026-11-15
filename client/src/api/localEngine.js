@@ -9,6 +9,7 @@ import {
   detectAtsPlatform,
   getCompanyAtsSupport,
 } from '../../../shared/atsPlatforms.js';
+import { resolveJobOfficialTarget } from '../../../shared/jobLinkResolver.js';
 
 const STORAGE_KEY = 'zhihang_campus_static_v1';
 
@@ -634,6 +635,7 @@ export const localEngine = {
       companyId = '',
       onlyOpen = '',
       onlyReferral = '',
+      onlyExactDetail = '',
       sort = 'latest',
     } = params;
 
@@ -650,7 +652,7 @@ export const localEngine = {
 
     const enrichedAll = jobs.map((j) => {
       const c = companyMap.get(j.company_id) || {};
-      return {
+      const base = {
         ...j,
         company_name: c.name || '',
         company_short_name: c.short_name || '',
@@ -667,6 +669,16 @@ export const localEngine = {
         recruit_type: j.recruit_type || '校园招聘',
         experience_req: j.experience_req || '应届毕业生',
         tracked: trackedMap[j.id] || null,
+      };
+      const targetInfo = resolveJobOfficialTarget(base);
+      return {
+        ...base,
+        link_target_type: targetInfo.targetType,
+        is_exact_detail: targetInfo.isExactDetail,
+        resolved_official_url: targetInfo.href,
+        resolved_link_label: targetInfo.buttonLabel,
+        resolved_badge_text: targetInfo.badgeText,
+        resolved_search_keyword: targetInfo.searchKeyword,
       };
     });
 
@@ -688,6 +700,7 @@ export const localEngine = {
       if (companyId && item.company_id !== companyId) return false;
       if ((onlyOpen === '1' || onlyOpen === 'true') && item.status !== 'open' && item.status !== 'closing_soon') return false;
       if ((onlyReferral === '1' || onlyReferral === 'true') && !item.is_referral) return false;
+      if ((onlyExactDetail === '1' || onlyExactDetail === 'true') && !item.is_exact_detail) return false;
       return true;
     });
 
@@ -712,6 +725,8 @@ export const localEngine = {
     const recruitTypeCount = new Map();
     const experienceCount = new Map();
 
+    let exactDetailCount = 0;
+
     for (const j of enrichedAll) {
       const ck = `${j.city}::${j.province}::${j.city_tier}`;
       if (!cityFacetMap.has(ck)) {
@@ -723,6 +738,7 @@ export const localEngine = {
       typeCount.set(j.company_type, (typeCount.get(j.company_type) || 0) + 1);
       recruitTypeCount.set(j.recruit_type, (recruitTypeCount.get(j.recruit_type) || 0) + 1);
       experienceCount.set(j.experience_req, (experienceCount.get(j.experience_req) || 0) + 1);
+      if (j.is_exact_detail) exactDetailCount += 1;
     }
 
     const toFacetArray = (map) =>
@@ -740,6 +756,7 @@ export const localEngine = {
         companyTypes: toFacetArray(typeCount),
         recruitTypes: toFacetArray(recruitTypeCount),
         experienceReqs: toFacetArray(experienceCount),
+        exactDetailCount,
       },
     };
   },
@@ -1404,6 +1421,67 @@ export const localEngine = {
       created: true,
       atsInfo,
       staticModeNote: '纯静态模式下已保存订阅配置；实时跨站拉取企业 ATS 岗位需在本地启动后端 npm run start。',
+    };
+  },
+
+  async subscribeAllAtsSources() {
+    const catalog = await fetchStaticCatalog();
+    const state = readLocalState(catalog);
+    const { companies } = await getHydratedContext();
+    const syncStatus = await this.getSyncStatus();
+    const existingByUrl = new Map((syncStatus?.sources || []).map((s) => [s.url, s]));
+
+    let createdCount = 0;
+    let reenabledCount = 0;
+    let totalSupported = 0;
+    const sources = [];
+    const now = new Date().toISOString();
+
+    for (const company of companies) {
+      const atsInfo = getCompanyAtsSupport(company);
+      if (!atsInfo?.autoSyncable || !atsInfo.url) continue;
+      totalSupported += 1;
+
+      const existing = existingByUrl.get(atsInfo.url);
+      if (existing) {
+        if (!existing.enabled) {
+          state.disabledBuiltinIds = (state.disabledBuiltinIds || []).filter((x) => x !== existing.id);
+          const customIdx = (state.customSources || []).findIndex((c) => c.id === existing.id);
+          if (customIdx !== -1) state.customSources[customIdx].enabled = true;
+          reenabledCount += 1;
+        }
+        sources.push({ ...existing, enabled: true });
+        continue;
+      }
+
+      const created = {
+        id: genId('src'),
+        name: `${company.short_name || company.name} · ${atsInfo.label || '官方 ATS'}`,
+        source_type: 'ats_auto',
+        url: atsInfo.url,
+        default_company_id: company.id,
+        enabled: true,
+        is_builtin: false,
+        auto_interval_hours: 6,
+        last_synced_at: '',
+        last_status: 'idle',
+        last_message: '已批量保存订阅；注：实时跨站同步需运行本地后端 npm run start。',
+        items_count: 0,
+        created_at: now,
+      };
+      state.customSources.push(created);
+      existingByUrl.set(created.url, created);
+      sources.push(created);
+      createdCount += 1;
+    }
+
+    saveLocalState(state);
+    return {
+      createdCount,
+      reenabledCount,
+      totalSupported,
+      sources,
+      staticModeNote: '纯静态模式下已保存全部可直达企业 ATS 订阅源；实时跨站抓新需在本地运行 npm run start。',
     };
   },
 

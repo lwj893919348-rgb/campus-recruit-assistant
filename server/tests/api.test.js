@@ -29,6 +29,12 @@ import {
   getCompanyAtsSupport,
 } from '../../shared/atsPlatforms.js';
 import {
+  extractConciseSearchKeyword,
+  isFunctionalSearchTemplate,
+  isSpecificJobDetailUrl,
+  resolveJobOfficialTarget,
+} from '../../shared/jobLinkResolver.js';
+import {
   ALL_JOB_CATEGORIES,
   parseWechatAnnouncementText,
 } from '../../shared/jobParser.js';
@@ -976,7 +982,7 @@ test('HotJob Wecruit adapter resolves getSLD, fetches form-urlencoded listPositi
     assert.equal(socialJob.deadline, '长期有效/招满即止');
     assert.equal(
       socialJob.official_source_url,
-      'https://wecruit.hotjob.cn/SU63abcdef0123456789abcdef/pb/index.html#/',
+      'https://wecruit.hotjob.cn/SU63abcdef0123456789abcdef/pb/posDetail.html?postId=hj-social-1&postType=society',
     );
 
     // Secondary SSRF test when getSLD redirects to loopback IP
@@ -1140,6 +1146,161 @@ test('POST /api/sync/sources/subscribe-company subscribes autoSyncable firms ide
       url: 'https://boards.greenhouse.io/example-org',
     });
     assert.equal(directCreateAts.status, 201);
+  } finally {
+    db.close();
+  }
+});
+
+test('jobLinkResolver classifies detail URLs, bespoke keyword search URLs, and portal fallbacks accurately', () => {
+  assert.equal(isSpecificJobDetailUrl('https://whchem.zhiye.com/JobAd/Info?adid=12345'), true);
+  assert.equal(
+    isSpecificJobDetailUrl('https://whchem.hotjob.cn/SU63abcdef0123456789abcdef/pb/posDetail.html?postId=hj1&postType=campus'),
+    true,
+  );
+  assert.equal(isSpecificJobDetailUrl('https://whchem.zhiye.com/campus'), false);
+
+  assert.equal(isFunctionalSearchTemplate('https://join.qq.com/post.html?query=p_1&keyword={q}'), true);
+  assert.equal(isFunctionalSearchTemplate('https://campus.example.com/?q={q}'), false);
+
+  assert.equal(extractConciseSearchKeyword('腾讯 · 后端开发工程师（AI基础设施）', '腾讯', '腾讯科技'), '后端开发工程师');
+  assert.equal(extractConciseSearchKeyword('全栈硬件架构师 / Senior EE', '大疆', '大疆创新'), '全栈硬件架构师');
+
+  // 1. Live detail link (Beisen JobAd) -> detail tier
+  const detailRes = resolveJobOfficialTarget({
+    title: '化工工艺研发工程师',
+    official_source_url: 'https://whchem.zhiye.com/JobAd/Info?adid=998877',
+    company_portal_url: 'https://whchem.zhiye.com',
+    sync_source: 'live_ats_snapshot',
+  });
+  assert.equal(detailRes.targetType, 'detail');
+  assert.equal(detailRes.isExactDetail, true);
+  assert.equal(detailRes.href, 'https://whchem.zhiye.com/JobAd/Info?adid=998877');
+  assert.equal(detailRes.buttonLabel, '直达岗位详情页');
+
+  // 2. Curated portal job with functional search template -> search tier with encoded concise keyword
+  const searchRes = resolveJobOfficialTarget({
+    title: '后端开发工程师（云与智慧产业）',
+    recruit_type: '校园招聘',
+    company_name: '腾讯',
+    company_short_name: '腾讯',
+    official_source_url: 'https://join.qq.com/index.html',
+    company_portal_url: 'https://join.qq.com/index.html',
+    company_search_url_template: 'https://join.qq.com/post.html?query=p_1&keyword={q}',
+  });
+  assert.equal(searchRes.targetType, 'search');
+  assert.equal(searchRes.isExactDetail, false);
+  assert.match(searchRes.href, /^https:\/\/join\.qq\.com\/post\.html\?query=p_1&keyword=/);
+  assert.equal(decodeURIComponent(searchRes.href.split('keyword=')[1]), '后端开发工程师');
+
+  // 3. Social job whose search template points to a campus-only portal should fall back to social portal
+  const socialPortalRes = resolveJobOfficialTarget({
+    title: '高级嵌入式系统工程师（社招）',
+    recruit_type: '社会招聘',
+    official_source_url: 'https://careers.example.com/social',
+    company_portal_url: 'https://campus.example.com',
+    company_social_url: 'https://careers.example.com/social',
+    company_search_url_template: 'https://campus.example.com/jobs?keyword={q}',
+  });
+  assert.equal(socialPortalRes.targetType, 'portal');
+  assert.equal(socialPortalRes.href, 'https://careers.example.com/social');
+  assert.equal(socialPortalRes.buttonLabel, '前往社招官网页');
+});
+
+test('upsertBuiltInCatalog replaces placeholders for live snapshot firms while keeping application-linked rows', () => {
+  const db = createDatabase(':memory:', { seed: false });
+  initSchema(db);
+  try {
+    // Initial seed with no snapshot override -> all static placeholders exist
+    upsertBuiltInCatalog(db, { snapshotOverride: null });
+    const whPlaceholder = db
+      .prepare("SELECT * FROM jobs WHERE company_id = 'wanhua' LIMIT 1")
+      .get();
+    assert.ok(whPlaceholder);
+
+    // Track one placeholder job in applications to verify FK preservation
+    db.prepare(
+      `INSERT INTO applications (id, job_id, company_name, job_title, status, applied_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'applied', '2026-11-15', '2026-11-15T00:00:00Z', '2026-11-15T00:00:00Z')`,
+    ).run('app-keep-fk', whPlaceholder.id, '万华化学', whPlaceholder.title);
+
+    // Apply live snapshot for wanhua
+    upsertBuiltInCatalog(db, {
+      snapshotOverride: {
+        generatedAt: '2026-11-15T10:00:00Z',
+        jobs: [
+          {
+            id: 'snap-wh-real-1',
+            company_id: 'wanhua',
+            external_id: 'live-wh-101',
+            recruit_type: '社会招聘',
+            experience_req: '3-5年经验',
+            title: '2026高级聚氨酯研发工程师（官网实招）',
+            category: '硬件制造',
+            season_tag: '社招常年',
+            graduation_years: ['社招/不限届别'],
+            province: '山东',
+            city: '烟台',
+            city_tier: '二线',
+            official_source_url: 'https://whchem.hotjob.cn/SU123/pb/posDetail.html?postId=live-wh-101&postType=society',
+            official_domain: 'hotjob.cn',
+            deadline: '2026-12-31',
+            status: 'open',
+            is_referral: 0,
+            salary_range: '25k-40k',
+            requirements_summary: '官网真实同步岗位',
+            sync_source: 'live_ats_snapshot',
+          },
+        ],
+      },
+    });
+
+    const appLinkedStillExists = db.prepare('SELECT * FROM jobs WHERE id = ?').get(whPlaceholder.id);
+    assert.ok(appLinkedStillExists);
+
+    const otherUnlinkedPlaceholders = db
+      .prepare("SELECT COUNT(*) AS cnt FROM jobs WHERE company_id = 'wanhua' AND sync_source = 'verified_registry' AND id != ?")
+      .get(whPlaceholder.id).cnt;
+    assert.equal(otherUnlinkedPlaceholders, 0);
+
+    const snapInserted = db.prepare('SELECT * FROM jobs WHERE id = ?').get('snap-wh-real-1');
+    assert.ok(snapInserted);
+    assert.equal(snapInserted.sync_source, 'live_ats_snapshot');
+  } finally {
+    db.close();
+  }
+});
+
+test('GET /api/jobs?onlyExactDetail=1 and POST /api/sync/sources/subscribe-all-ats work end-to-end', async () => {
+  const db = createDatabase(':memory:', { seed: true });
+  const app = createApp(db);
+  try {
+    const allRes = await invokeApp(app, 'GET', '/api/jobs');
+    assert.equal(allRes.status, 200);
+    assert.ok(allRes.data.facets.exactDetailCount > 0);
+    assert.ok(allRes.data.total >= allRes.data.facets.exactDetailCount);
+
+    const exactRes = await invokeApp(app, 'GET', '/api/jobs?onlyExactDetail=1');
+    assert.equal(exactRes.status, 200);
+    assert.equal(exactRes.data.total, allRes.data.facets.exactDetailCount);
+    assert.ok(exactRes.data.jobs.length > 0);
+    assert.ok(exactRes.data.jobs.every((job) => job.is_exact_detail === true));
+    assert.ok(
+      exactRes.data.jobs.some(
+        (job) =>
+          job.resolved_official_url.includes('JobAd/Info?adid=') ||
+          job.resolved_official_url.includes('posDetail.html?postId='),
+      ),
+    );
+
+    const bulkRes = await invokeApp(app, 'POST', '/api/sync/sources/subscribe-all-ats');
+    assert.equal(bulkRes.status, 200);
+    assert.ok(bulkRes.data.totalSupported >= 20);
+    assert.ok(bulkRes.data.createdCount >= 1);
+
+    // Calling again is idempotent
+    const bulkAgain = await invokeApp(app, 'POST', '/api/sync/sources/subscribe-all-ats');
+    assert.equal(bulkAgain.status, 200);
+    assert.equal(bulkAgain.data.createdCount, 0);
   } finally {
     db.close();
   }

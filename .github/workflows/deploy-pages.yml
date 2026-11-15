@@ -47,6 +47,9 @@ jobs:
             echo "path=/${REPO}/" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Refresh live ATS job snapshot (soft)
+        run: node --no-warnings scripts/sync-live-ats-snapshot.mjs --soft
+
       - name: Export catalog and build static site
         env:
           VITE_BASE_PATH: ${{ steps.base.outputs.path }}

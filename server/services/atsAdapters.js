@@ -320,6 +320,26 @@ function extractSuKey(text = '') {
   return m?.[1] || '';
 }
 
+const HOTJOB_POST_TYPE_MAP = {
+  1: 'campus',
+  2: 'society',
+  3: 'intern',
+  12: 'intern',
+  13: 'overseas',
+};
+
+function buildHotjobDetailUrl(portalLink, postId, rTypeCode, allowPrivateHosts) {
+  if (!postId || !String(portalLink || '').includes('/pb')) return portalLink;
+  const postType = HOTJOB_POST_TYPE_MAP[String(rTypeCode || '').trim()] || 'society';
+  try {
+    const candidate = new URL(`posDetail.html?postId=${encodeURIComponent(postId)}&postType=${postType}`, portalLink).href;
+    const safety = validateSafeTargetUrl(candidate, allowPrivateHosts);
+    return safety.ok ? safety.url.href : portalLink;
+  } catch {
+    return portalLink;
+  }
+}
+
 async function syncHotjobWecruit(source, parsedUrl, ctx) {
   const { fetchImpl, allowPrivateHosts, timeoutMs, maxPages = 2, pageSize = 50 } = ctx;
   let portalLink = parsedUrl.href;
@@ -521,7 +541,7 @@ async function syncHotjobWecruit(source, parsedUrl, ctx) {
           externalId: `hotjob:${suKey}:${key}`,
           title,
           companyName: String(row.companyName || row.corpName || '').trim(),
-          officialUrl: portalLink,
+          officialUrl: buildHotjobDetailUrl(portalLink, postId, rTypeCode, allowPrivateHosts),
           cityRaw,
           recruitTypeHint,
           salaryRange: String(row.salaryStr || row.salary || '').trim(),
