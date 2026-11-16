@@ -77,7 +77,7 @@ export const DashboardPage = memo(function DashboardPage({
               职航 · 大学生校招与官方直聘工作台
             </h1>
             <p className="max-w-2xl text-sm leading-relaxed text-[#4F686C]">
-              主攻校园招聘与实习机会（兼顾社招补录与 16 大行业职能方向）；支持简历防丢自动保存、公众号公告解析与全流程投递防重管理。
+              主攻校园招聘与实习机会（兼顾社招补录与 16 大行业职能方向）；支持简历防丢自动保存、按地区与详情直达精准选岗及全流程投递防重管理。
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded-full border border-sky-200/80 bg-sky-50/80 px-3 py-1 font-medium text-sky-800">

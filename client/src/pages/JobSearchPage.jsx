@@ -1,6 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { getCompanyAtsSupport } from '../../../shared/atsPlatforms.js';
 import { resolveJobOfficialTarget } from '../../../shared/jobLinkResolver.js';
 import {
   Search,
@@ -8,15 +7,10 @@ import {
   ShieldCheck,
   ExternalLink,
   Plus,
-  RefreshCw,
-  Building2,
   CheckCircle2,
   Sparkles,
-  AlertTriangle,
   Globe,
-  X,
   RotateCcw,
-  Database,
   Copy,
   Check,
   Briefcase,
@@ -24,7 +18,6 @@ import {
   ArrowUp,
 } from 'lucide-react';
 import { api } from '../api/client.js';
-import SyncCenterModal from '../components/SyncCenterModal.jsx';
 import {
   REGION_GROUPS,
   RECRUIT_TYPE_OPTIONS,
@@ -42,27 +35,6 @@ import {
 function getTianyanchaSearchUrl(keyword = '') {
   return `https://www.tianyancha.com/search?key=${encodeURIComponent(String(keyword || '').trim())}`;
 }
-
-const INITIAL_NEW_JOB = {
-  companyName: '',
-  companyType: '优质企业',
-  legalName: '',
-  entityTag: '',
-  wechatAccount: '',
-  recruitType: '校园招聘',
-  experienceReq: '应届毕业生',
-  title: '',
-  city: '北京',
-  province: '北京',
-  category: '技术研发',
-  seasonTag: '2027届秋招补录',
-  graduationYears: ['2027'],
-  officialUrl: '',
-  salaryRange: '',
-  deadline: '招满即止',
-  isReferral: false,
-  requirementsSummary: '',
-};
 
 const VERIFY_BADGE_MAP = {
   verified_official: { text: '官方库核验', cls: 'bg-emerald-50/90 text-emerald-700 border-emerald-200/80' },
@@ -124,21 +96,10 @@ export const JobSearchPage = memo(function JobSearchPage({
   const jobSentinelRef = useRef(null);
   const companySentinelRef = useRef(null);
 
-  const [verifyingId, setVerifyingId] = useState(null);
-  const [batchVerifying, setBatchVerifying] = useState(false);
-  const [updatingJobs, setUpdatingJobs] = useState(false);
-  const [verifyFeedbackMap, setVerifyFeedbackMap] = useState({});
   const [copiedWechatId, setCopiedWechatId] = useState(null);
-  const [subscribingCompanyId, setSubscribingCompanyId] = useState(null);
-
-  const [syncModalOpen, setSyncModalOpen] = useState(false);
-  const [syncSummary, setSyncSummary] = useState(null);
   const [companyQuery, setCompanyQuery] = useState('');
   const [companyWallType, setCompanyWallType] = useState('全部');
   const [portalKeyword, setPortalKeyword] = useState('');
-
-  const [addModalOpen, setAddModalOpen] = useState(false);
-  const [newJob, setNewJob] = useState(INITIAL_NEW_JOB);
 
   useEffect(() => {
     if (initialCity) {
@@ -216,15 +177,6 @@ export const JobSearchPage = memo(function JobSearchPage({
     }
   }, [onToast]);
 
-  const loadSyncSummary = useCallback(async () => {
-    try {
-      const data = await api.getSyncStatus();
-      setSyncSummary(data);
-    } catch {
-      // non-fatal status summary
-    }
-  }, []);
-
   useEffect(() => {
     const queryChanged = prevQRef.current !== q;
     prevQRef.current = q;
@@ -240,8 +192,7 @@ export const JobSearchPage = memo(function JobSearchPage({
 
   useEffect(() => {
     loadCompanies();
-    loadSyncSummary();
-  }, [loadCompanies, loadSyncSummary]);
+  }, [loadCompanies]);
 
   useEffect(() => {
     if (refreshSignal !== lastRefreshSignalRef.current) {
@@ -252,9 +203,8 @@ export const JobSearchPage = memo(function JobSearchPage({
       pendingRefreshRef.current = false;
       loadJobs({ silent: true });
       loadCompanies();
-      loadSyncSummary();
     }
-  }, [refreshSignal, isActive, loadJobs, loadCompanies, loadSyncSummary]);
+  }, [refreshSignal, isActive, loadJobs, loadCompanies]);
 
   useEffect(() => {
     if (!isActive) {
@@ -305,39 +255,6 @@ export const JobSearchPage = memo(function JobSearchPage({
     setSort('latest');
   }
 
-  async function handleSubscribeCompany(company) {
-    setSubscribingCompanyId(company.id);
-    try {
-      const subRes = await api.subscribeCompanySource({ companyId: company.id, channel: 'auto' });
-      if (subRes?.staticModeNote || api?.isStaticMode) {
-        onToast(
-          'info',
-          subRes?.staticModeNote ||
-            `已为「${company.short_name}」保存 ATS 自动追新订阅配置；实时跨站抓新需运行本地服务端 npm run start。`,
-        );
-        return;
-      }
-
-      const syncRes = await api.runSync({ sourceId: subRes.source.id });
-      const result = syncRes?.results?.[0];
-      if (result?.status === 'synced') {
-        onToast(
-          'success',
-          `「${company.short_name}」追新完成：新增 ${result.added || 0} 条、更新 ${result.updated || 0} 条在线岗位！`,
-        );
-      } else if (result?.status === 'restricted_portal') {
-        onToast('info', result.message || `「${company.short_name}」门户启用合规保护，请通过官网直达浏览。`);
-      } else {
-        onToast('info', result?.message || `已订阅「${company.short_name}」自动追新源，可在信息更新中心查看。`);
-      }
-      await Promise.all([loadJobs(), loadCompanies(), loadSyncSummary()]);
-    } catch (err) {
-      onToast('error', err.message || '订阅企业追新失败');
-    } finally {
-      setSubscribingCompanyId(null);
-    }
-  }
-
   async function handleCopyWechat(id, accountName) {
     try {
       await navigator.clipboard?.writeText(accountName);
@@ -346,70 +263,6 @@ export const JobSearchPage = memo(function JobSearchPage({
       setTimeout(() => setCopiedWechatId(null), 2000);
     } catch {
       onToast('info', `企业招聘公众号：${accountName}`);
-    }
-  }
-
-  async function handleVerifySingle(payload, key) {
-    setVerifyingId(key);
-    try {
-      const res = await api.verifyUrl(payload);
-      setVerifyFeedbackMap((prev) => ({ ...prev, [key]: res }));
-      onToast(res.ok ? 'success' : 'error', res.message);
-      loadJobs();
-      loadCompanies();
-    } catch (err) {
-      onToast('error', err.message);
-    } finally {
-      setVerifyingId(null);
-    }
-  }
-
-  async function handleBatchVerify() {
-    setBatchVerifying(true);
-    try {
-      const pool = filteredCompanies.length > 0 ? filteredCompanies : companies;
-      const targetIds = pool.slice(0, 12).map((c) => c.id);
-      const res = await api.verifyBatch({ companyIds: targetIds });
-      const okCount = res.results.filter((r) => r.ok).length;
-      onToast('info', `已完成 ${res.checked} 家官网入口实时状态核验（其中 ${okCount} 家响应正常/门禁可达）。`);
-      loadCompanies();
-      loadJobs();
-    } catch (err) {
-      onToast('error', err.message);
-    } finally {
-      setBatchVerifying(false);
-    }
-  }
-
-  async function handleQuickUpdateJobs() {
-    setUpdatingJobs(true);
-    try {
-      const res = await api.runSync({});
-      await Promise.all([loadJobs(), loadCompanies(), loadSyncSummary()]);
-      const summaryParts = [];
-      if (res.addedCount > 0) summaryParts.push(`新增 ${res.addedCount} 条`);
-      if (res.updatedCount > 0) summaryParts.push(`更新/预警 ${res.updatedCount} 条`);
-      if (res.expiredCount > 0) summaryParts.push(`下线过期 ${res.expiredCount} 条`);
-      const detail = summaryParts.length > 0 ? summaryParts.join('，') : '已完成最新目录与截止时间巡检';
-      onToast('success', `招聘信息已更新：${detail}（共 ${res.counts?.openJobs ?? jobs.length} 个在招岗）。`);
-    } catch (err) {
-      onToast('error', `更新失败：${err.message}`);
-    } finally {
-      setUpdatingJobs(false);
-    }
-  }
-
-  async function handleCreateJob(e) {
-    e.preventDefault();
-    try {
-      await api.createJob(newJob);
-      onToast('success', '已校验域名隔离并收录至官网校招池！');
-      setAddModalOpen(false);
-      setNewJob(INITIAL_NEW_JOB);
-      loadJobs();
-      loadCompanies();
-    } catch (err) {
-      onToast('error', err.message);
     }
   }
 
@@ -507,7 +360,7 @@ export const JobSearchPage = memo(function JobSearchPage({
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-lg font-bold tracking-tight text-[#132A2E]">大学生校招与官方直聘检索</h1>
             <span className="rounded-full border border-teal-200/80 bg-teal-50/90 px-2.5 py-0.5 text-[11px] font-semibold text-teal-800">
-              {companies.length} 家官方企业 · {syncSummary?.counts?.openJobs ?? jobs.length} 条收录入口（{facets.exactDetailCount || 0} 条官网直抓原岗）
+              {companies.length} 家官方企业 · {jobs.length} 条当前匹配（{facets.exactDetailCount || 0} 条官网直抓原岗）
             </span>
           </div>
           <p className="mt-1 text-xs text-[#4B6366]">
@@ -540,24 +393,6 @@ export const JobSearchPage = memo(function JobSearchPage({
               官方名企入口墙 ({companies.length})
             </button>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setSyncModalOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200/90 bg-emerald-50/85 px-3.5 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100/90"
-          >
-            <Database className="h-3.5 w-3.5" />
-            信息更新中心
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setAddModalOpen(true)}
-            className="fresh-btn-primary inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            收录官网岗位
-          </button>
         </div>
       </div>
 
@@ -644,16 +479,6 @@ export const JobSearchPage = memo(function JobSearchPage({
                   className="fresh-input w-full rounded-xl py-2 pr-4 pl-10 text-sm text-[#132A2E] placeholder:text-[#7A9195]"
                 />
               </div>
-
-              <button
-                type="button"
-                onClick={handleQuickUpdateJobs}
-                disabled={updatingJobs}
-                className="fresh-btn-primary inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold disabled:opacity-60"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${updatingJobs ? 'animate-spin' : ''}`} />
-                {updatingJobs ? '正在更新...' : '更新招聘信息'}
-              </button>
 
               <button
                 type="button"
@@ -886,7 +711,7 @@ export const JobSearchPage = memo(function JobSearchPage({
           ) : jobs.length === 0 ? (
             <div className="fresh-card rounded-3xl border-dashed border-teal-900/20 p-12 text-center">
               <p className="text-sm font-medium text-[#132A2E]">没有符合当前筛选条件的官网岗位</p>
-              <p className="mt-1 text-xs text-[#4B6366]">可以尝试减少城市限制、切换届别，或点击右上角“收录官网岗位”添加新的官方校招入口。</p>
+              <p className="mt-1 text-xs text-[#4B6366]">可以尝试减少城市限制、切换届别，或恢复全部筛选条件重新查看。</p>
               <button
                 type="button"
                 onClick={resetAllFilters}
@@ -905,7 +730,6 @@ export const JobSearchPage = memo(function JobSearchPage({
                 {visibleJobs.map((job) => {
                 const badge =
                   VERIFY_BADGE_MAP[job.company_verification_status] || VERIFY_BADGE_MAP.verified_official;
-                const liveResult = verifyFeedbackMap[job.id];
                 const trackedInfo = job.tracked ? STAGE_MAP[job.tracked.status] : null;
                 const targetInfo = resolveJobOfficialTarget(job);
                 const tierBadgeClass =
@@ -1043,23 +867,6 @@ export const JobSearchPage = memo(function JobSearchPage({
                       </div>
 
                       <p className="mt-2.5 text-xs leading-relaxed text-[#4B6366]">{job.requirements_summary}</p>
-
-                      {liveResult && (
-                        <div
-                          className={`mt-2.5 flex items-start gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] ${
-                            liveResult.ok
-                              ? 'border-emerald-200 bg-emerald-50/75 text-emerald-800'
-                              : 'border-rose-200 bg-rose-50/75 text-rose-800'
-                          }`}
-                        >
-                          {liveResult.ok ? (
-                            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                          ) : (
-                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                          )}
-                          <span>{liveResult.message}</span>
-                        </div>
-                      )}
                     </div>
 
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-teal-900/10 pt-3">
@@ -1077,16 +884,6 @@ export const JobSearchPage = memo(function JobSearchPage({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleVerifySingle({ jobId: job.id }, job.id)}
-                          disabled={verifyingId === job.id}
-                          className="fresh-btn-secondary inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-medium disabled:opacity-50"
-                        >
-                          <RefreshCw className={`h-3 w-3 ${verifyingId === job.id ? 'animate-spin' : ''}`} />
-                          核验官网
-                        </button>
-
                         <a
                           href={targetInfo.href}
                           target="_blank"
@@ -1167,21 +964,10 @@ export const JobSearchPage = memo(function JobSearchPage({
         /* Official Companies Wall */
         <section className="space-y-4">
           <div className="fresh-card space-y-3 rounded-3xl p-4 sm:p-5">
-            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
               <div className="text-xs text-[#4B6366]">
-                共收录 <strong className="text-[#132A2E]">{companies.length}</strong> 家正规企业官方校招入口（含大厂、高成长初创/融资企业、专精特新及央国企，当前筛选{' '}
+                共收录 <strong className="text-[#132A2E]">{companies.length}</strong> 家正规企业官方招聘入口（含大厂、高成长初创、专精特新及央国企，当前筛选{' '}
                 <strong className="text-[#132A2E]">{filteredCompanies.length}</strong> 家），每家均附带工商注册主体与天眼查核验直链。
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleBatchVerify}
-                  disabled={batchVerifying}
-                  className="fresh-btn-primary inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-medium disabled:opacity-60"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${batchVerifying ? 'animate-spin' : ''}`} />
-                  {batchVerifying ? '批量核验官网状态中...' : '实时批量核验官网'}
-                </button>
               </div>
             </div>
 
@@ -1234,7 +1020,6 @@ export const JobSearchPage = memo(function JobSearchPage({
                 kw && c.search_url_template
                   ? c.search_url_template.replace('{q}', encodeURIComponent(kw))
                   : null;
-              const atsSupport = getCompanyAtsSupport(c);
               return (
                 <div
                   key={c.id}
@@ -1256,19 +1041,9 @@ export const JobSearchPage = memo(function JobSearchPage({
                           </div>
                         </div>
                       </div>
-                      <div className="flex flex-wrap items-center justify-end gap-1">
-                        {atsSupport?.autoSyncable && (
-                          <span
-                            className="rounded-md border border-emerald-200/80 bg-emerald-50/90 px-2 py-0.5 text-[10px] font-semibold text-emerald-700"
-                            title={`已对接 ${atsSupport.label} 公开明文接口，支持自动追新`}
-                          >
-                            可自动追新 · {atsSupport.label}
-                          </span>
-                        )}
-                        <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${badge.cls}`}>
-                          {badge.text}
-                        </span>
-                      </div>
+                      <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-medium ${badge.cls}`}>
+                        {badge.text}
+                      </span>
                     </div>
 
                     <div className="mt-3 flex items-center gap-1.5 rounded-xl bg-teal-50/50 px-2.5 py-1.5 text-xs text-[#2E484D]">
@@ -1306,9 +1081,6 @@ export const JobSearchPage = memo(function JobSearchPage({
                     )}
 
                     <p className="mt-2 text-xs leading-relaxed text-[#4B6366]">{c.notes}</p>
-                    {c.last_verify_message && (
-                      <p className="mt-1.5 text-[11px] text-[#7A9195]">最近核验：{c.last_verify_message}</p>
-                    )}
                   </div>
 
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-teal-900/10 pt-3">
@@ -1322,14 +1094,6 @@ export const JobSearchPage = memo(function JobSearchPage({
                       >
                         天眼查 <ExternalLink className="h-3 w-3" />
                       </a>
-                      <button
-                        type="button"
-                        onClick={() => handleVerifySingle({ companyId: c.id }, c.id)}
-                        disabled={verifyingId === c.id}
-                        className="fresh-btn-secondary rounded-xl px-2.5 py-1 text-xs font-medium"
-                      >
-                        {verifyingId === c.id ? '核验中...' : '核验'}
-                      </button>
                       {directSearchUrl && (
                         <a
                           href={directSearchUrl}
@@ -1339,18 +1103,6 @@ export const JobSearchPage = memo(function JobSearchPage({
                         >
                           带参搜官网 <ExternalLink className="h-3 w-3" />
                         </a>
-                      )}
-                      {atsSupport?.autoSyncable && (
-                        <button
-                          type="button"
-                          disabled={subscribingCompanyId === c.id}
-                          onClick={() => handleSubscribeCompany(c)}
-                          className="inline-flex items-center gap-1 rounded-xl border border-emerald-200/90 bg-emerald-50/85 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-                          title={`一键订阅 ${c.short_name}（${atsSupport.label}）自动追新`}
-                        >
-                          <RefreshCw className={`h-3 w-3 ${subscribingCompanyId === c.id ? 'animate-spin' : ''}`} />
-                          {subscribingCompanyId === c.id ? '追新中...' : '订阅追新'}
-                        </button>
                       )}
                       {c.official_social_url && c.official_social_url !== c.official_campus_url && (
                         <a
@@ -1402,268 +1154,6 @@ export const JobSearchPage = memo(function JobSearchPage({
           )}
         </section>
       )}
-
-      {/* Custom Official Job Import Modal */}
-      {addModalOpen && (
-        <div className="fresh-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fresh-modal max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl">
-            <div className="flex items-center justify-between border-b border-teal-900/10 bg-gradient-to-r from-teal-50/80 via-white to-sky-50/55 px-5 py-4">
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-teal-600" />
-                <h3 className="text-base font-semibold text-[#132A2E]">收录企业官网直招岗位（校招 / 社招 / 实习）</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAddModalOpen(false)}
-                className="rounded-xl p-1.5 text-[#4B6366] hover:bg-teal-50 hover:text-teal-800"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <form onSubmit={handleCreateJob} className="space-y-3.5 p-5">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">企业名称 *</label>
-                  <input
-                    required
-                    value={newJob.companyName}
-                    onChange={(e) => setNewJob({ ...newJob, companyName: e.target.value })}
-                    placeholder="如：面壁智能 / 海康威视"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">岗位名称 *</label>
-                  <input
-                    required
-                    value={newJob.title}
-                    onChange={(e) => setNewJob({ ...newJob, title: e.target.value })}
-                    placeholder="如：大模型推理研发工程师"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">企业类型</label>
-                  <select
-                    value={newJob.companyType}
-                    onChange={(e) => setNewJob({ ...newJob, companyType: e.target.value })}
-                    className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="优质企业">优质企业</option>
-                    {COMPANY_TYPE_OPTIONS.filter((t) => t !== '全部').map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">融资/主体资质标签（可选）</label>
-                  <input
-                    value={newJob.entityTag}
-                    onChange={(e) => setNewJob({ ...newJob, entityTag: e.target.value })}
-                    placeholder="如：初创/融资企业 · A轮融资"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-1 flex items-center justify-between">
-                  <label className="text-xs font-medium text-slate-700">工商主体全称（天眼查核对）</label>
-                  <a
-                    href={getTianyanchaSearchUrl(newJob.legalName || newJob.companyName)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 hover:text-amber-800 hover:underline"
-                  >
-                    <ShieldCheck className="h-3 w-3" />
-                    去天眼查核对主体 ↗
-                  </a>
-                </div>
-                <input
-                  value={newJob.legalName}
-                  onChange={(e) => setNewJob({ ...newJob, legalName: e.target.value })}
-                  placeholder="如：北京面壁智能科技有限责任公司（若企业壁未收录将自动建档）"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">
-                  官网或专属 ATS 校招链接（支持飞书 / Moka / 北森租户隔离）*
-                </label>
-                <input
-                  required
-                  type="url"
-                  value={newJob.officialUrl}
-                  onChange={(e) => setNewJob({ ...newJob, officialUrl: e.target.value })}
-                  placeholder="https://xxx.jobs.feishu.cn/... 或 https://app.mokahr.com/campus-recruitment/..."
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">工作城市 *</label>
-                  <input
-                    required
-                    value={newJob.city}
-                    onChange={(e) => setNewJob({ ...newJob, city: e.target.value })}
-                    placeholder="北京"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">省份</label>
-                  <input
-                    value={newJob.province}
-                    onChange={(e) => setNewJob({ ...newJob, province: e.target.value })}
-                    placeholder="北京"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">岗位类别</label>
-                  <select
-                    value={newJob.category}
-                    onChange={(e) => setNewJob({ ...newJob, category: e.target.value })}
-                    className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  >
-                    {JOB_CATEGORY_OPTIONS.filter((c) => c !== '全部').map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">招聘通道 *</label>
-                  <select
-                    value={newJob.recruitType}
-                    onChange={(e) => {
-                      const nextRt = e.target.value;
-                      setNewJob({
-                        ...newJob,
-                        recruitType: nextRt,
-                        experienceReq:
-                          nextRt === '社会招聘' ? '1-3年' : nextRt === '实习兼职' ? '在校实习生' : '应届毕业生',
-                        seasonTag:
-                          nextRt === '社会招聘'
-                            ? '2026-2027社招急聘'
-                            : nextRt === '实习兼职'
-                              ? '日常实习'
-                              : '2027届秋招补录',
-                      });
-                    }}
-                    className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  >
-                    {RECRUIT_TYPE_OPTIONS.filter((x) => x !== '全部').map((rt) => (
-                      <option key={rt} value={rt}>
-                        {rt}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">经验要求</label>
-                  <select
-                    value={newJob.experienceReq}
-                    onChange={(e) => setNewJob({ ...newJob, experienceReq: e.target.value })}
-                    className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  >
-                    {EXPERIENCE_OPTIONS.filter((x) => x !== '全部').map((exp) => (
-                      <option key={exp} value={exp}>
-                        {exp}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">招聘季 / 批次</label>
-                  <select
-                    value={newJob.seasonTag}
-                    onChange={(e) => setNewJob({ ...newJob, seasonTag: e.target.value })}
-                    className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  >
-                    {SEASON_OPTIONS.filter((s) => s !== '全部').map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">参考薪资（选填）</label>
-                  <input
-                    value={newJob.salaryRange}
-                    onChange={(e) => setNewJob({ ...newJob, salaryRange: e.target.value })}
-                    placeholder="如：25-45K / 面议"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">投递截止日期</label>
-                  <input
-                    value={newJob.deadline}
-                    onChange={(e) => setNewJob({ ...newJob, deadline: e.target.value })}
-                    placeholder="2026-12-30 或 招满即止"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">岗位要求摘要</label>
-                <textarea
-                  rows={2}
-                  value={newJob.requirementsSummary}
-                  onChange={(e) => setNewJob({ ...newJob, requirementsSummary: e.target.value })}
-                  placeholder="简要记录专业、语言或技能要求，方便后续检索对比..."
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 border-t border-teal-900/10 pt-3.5">
-                <button
-                  type="button"
-                  onClick={() => setAddModalOpen(false)}
-                  className="fresh-btn-secondary rounded-xl px-4 py-2 text-sm"
-                >
-                  取消
-                </button>
-                <button
-                  type="submit"
-                  className="fresh-btn-primary rounded-xl px-4 py-2 text-sm font-medium"
-                >
-                  校验并保存到校招库
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      <SyncCenterModal
-        isOpen={syncModalOpen}
-        onClose={() => setSyncModalOpen(false)}
-        onSynced={() => {
-          loadJobs();
-          loadCompanies();
-          loadSyncSummary();
-        }}
-        onToast={onToast}
-        companies={companies}
-      />
 
       {isActive &&
         showBackToTop &&
