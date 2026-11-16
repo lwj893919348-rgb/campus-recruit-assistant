@@ -14,13 +14,18 @@ async function request(path, options = {}) {
 
   if (!res.ok) {
     let errMsg = `请求失败 (${res.status})`;
+    let payload = null;
     try {
-      const payload = await res.json();
+      payload = await res.json();
       if (payload?.error) errMsg = payload.error;
     } catch {
       // ignore parse failure
     }
-    throw new Error(errMsg);
+    const err = new Error(errMsg);
+    err.status = res.status;
+    if (payload?.code) err.code = payload.code;
+    if (payload?.existing) err.existing = payload.existing;
+    throw err;
   }
 
   const contentType = res.headers.get('content-type') || '';

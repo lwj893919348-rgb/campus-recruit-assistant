@@ -14,9 +14,17 @@ import {
   Trash2,
   X,
   Sparkles,
+  AlertTriangle,
 } from 'lucide-react';
 import { api } from '../api/client.js';
-import { APPLICATION_STAGES, STAGE_MAP, SEASON_OPTIONS, formatEventCountdown } from '../data/constants.js';
+import {
+  APPLICATION_STAGES,
+  STAGE_MAP,
+  SEASON_OPTIONS,
+  PRIORITY_OPTIONS,
+  PRIORITY_MAP,
+  formatEventCountdown,
+} from '../data/constants.js';
 
 const EMPTY_FORM = {
   id: '',
@@ -26,6 +34,7 @@ const EMPTY_FORM = {
   official_url: '',
   season_tag: '2027届秋招补录',
   channel: '官网直投',
+  priority: 'normal',
   referral_code: '',
   resume_id: '',
   status: 'applied',
@@ -56,6 +65,7 @@ export const ApplicationsPage = memo(function ApplicationsPage({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState(null);
 
   const hasLoadedOnceRef = useRef(false);
   const prevQRef = useRef(q);
@@ -122,6 +132,7 @@ export const ApplicationsPage = memo(function ApplicationsPage({
 
   function openNewDrawer() {
     const defResume = resumes.find((r) => r.is_default) || resumes[0];
+    setDuplicateWarning(null);
     setForm({
       ...EMPTY_FORM,
       applied_at: new Date().toISOString().slice(0, 10),
@@ -131,6 +142,7 @@ export const ApplicationsPage = memo(function ApplicationsPage({
   }
 
   function openEditDrawer(app) {
+    setDuplicateWarning(null);
     setForm({
       id: app.id,
       company_name: app.company_name || '',
@@ -139,6 +151,7 @@ export const ApplicationsPage = memo(function ApplicationsPage({
       official_url: app.official_url || '',
       season_tag: app.season_tag || '2027届秋招补录',
       channel: app.channel || '官网直投',
+      priority: app.priority || 'normal',
       referral_code: app.referral_code || '',
       resume_id: app.resume_id || '',
       status: app.status || 'applied',
@@ -150,25 +163,35 @@ export const ApplicationsPage = memo(function ApplicationsPage({
     setDrawerOpen(true);
   }
 
-  async function handleSaveForm(e) {
-    e.preventDefault();
+  async function submitDrawer(allowDuplicate = false) {
     setSaving(true);
     try {
       if (form.id) {
         await api.updateApplication(form.id, form);
         onToast('success', `已更新「${form.company_name}」的投递进度`);
       } else {
-        await api.createApplication(form);
+        await api.createApplication({ ...form, allowDuplicate });
         onToast('success', `已新增投递记录：${form.company_name}`);
       }
+      setDuplicateWarning(null);
       setDrawerOpen(false);
       await loadApplications({ silent: true });
       onDataMutated?.();
     } catch (err) {
-      onToast('error', err.message);
+      if (err?.code === 'DUPLICATE_APPLICATION') {
+        setDuplicateWarning({ message: err.message, existing: err.existing || null });
+      } else {
+        onToast('error', err.message);
+      }
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleSaveForm(e) {
+    e.preventDefault();
+    setDuplicateWarning(null);
+    submitDrawer(false);
   }
 
   async function handleStatusChange(appId, nextStatus) {
@@ -212,9 +235,9 @@ export const ApplicationsPage = memo(function ApplicationsPage({
       {/* Header & Actions */}
       <div className="fresh-card flex flex-col justify-between gap-3 rounded-3xl p-5 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-lg font-bold text-slate-900">校招投递信息管理中心</h1>
+          <h1 className="text-lg font-bold text-slate-900">投递进度管理中心</h1>
           <p className="mt-0.5 text-xs text-slate-500">
-            记录每一次网申、笔试与面试节点，关联使用的简历版本与内推码，随时掌控求职全流程
+            记录每一次网申、笔试与面试节点，支持优先级标记、防重校验与关联简历版本，随时掌控求职全流程
           </p>
         </div>
 
@@ -375,6 +398,13 @@ export const ApplicationsPage = memo(function ApplicationsPage({
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <span className="truncate text-sm font-bold text-slate-900">{app.company_name}</span>
+                                {app.priority && app.priority !== 'normal' && PRIORITY_MAP[app.priority] && (
+                                  <span
+                                    className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${PRIORITY_MAP[app.priority].badgeClass}`}
+                                  >
+                                    {PRIORITY_MAP[app.priority].label}
+                                  </span>
+                                )}
                                 {app.is_demo && (
                                   <span className="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500">
                                     示例
@@ -517,7 +547,16 @@ export const ApplicationsPage = memo(function ApplicationsPage({
                   return (
                     <tr key={app.id} className="hover:bg-teal-50/35">
                       <td className="px-4 py-3">
-                        <div className="font-bold text-slate-900">{app.company_name}</div>
+                        <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                          <span>{app.company_name}</span>
+                          {app.priority && app.priority !== 'normal' && PRIORITY_MAP[app.priority] && (
+                            <span
+                              className={`rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${PRIORITY_MAP[app.priority].badgeClass}`}
+                            >
+                              {PRIORITY_MAP[app.priority].label}
+                            </span>
+                          )}
+                        </div>
                         <div className="mt-0.5 text-slate-600">{app.job_title}</div>
                       </td>
                       <td className="px-3 py-3 text-slate-700">{app.city || '-'}</td>
@@ -718,7 +757,21 @@ export const ApplicationsPage = memo(function ApplicationsPage({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">投递优先级</label>
+                  <select
+                    value={form.priority}
+                    onChange={(e) => setForm({ ...form, priority: e.target.value })}
+                    className="fresh-input w-full rounded-xl px-2.5 py-2 text-sm"
+                  >
+                    {PRIORITY_OPTIONS.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-700">投递渠道</label>
                   <select
@@ -770,15 +823,37 @@ export const ApplicationsPage = memo(function ApplicationsPage({
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">面经复盘 / 官网账号备忘</label>
+                <label className="mb-1 block text-xs font-medium text-slate-700">笔面复盘与进度备注</label>
                 <textarea
                   rows={4}
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  placeholder="记录官网登录邮箱/手机号、笔试考察题型、一面技术问题与待补强点..."
+                  placeholder="记录笔试考察重点、一面技术问题与待补强点（请勿填写真实密码等敏感凭证）..."
                   className="fresh-input w-full rounded-xl px-3 py-2 text-sm"
                 />
               </div>
+
+              {duplicateWarning && (
+                <div
+                  data-testid="drawer-duplicate-app-warning"
+                  className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50/90 p-3 text-xs text-amber-900"
+                >
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                    <span>{duplicateWarning.message}</span>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => submitDrawer(true)}
+                      disabled={saving}
+                      className="rounded-xl border border-amber-300 bg-white px-3 py-1 font-semibold text-amber-800 hover:bg-amber-100"
+                    >
+                      确系补投/不同部门，仍继续新增
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end gap-2.5 border-t border-teal-900/10 pt-4">
                 <button

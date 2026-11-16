@@ -366,6 +366,7 @@ async function getHydratedContext() {
   const normalizeLocalJob = (rawJob) => ({
     ...rawJob,
     ...normalizeJobLocation(rawJob.city, rawJob.province),
+    last_checked_at: rawJob.last_checked_at || rawJob.created_at || catalog.meta?.exportedAt || '',
     status: computeDeadlineStatus(rawJob),
   });
 
@@ -699,8 +700,8 @@ export const localEngine = {
 
     filtered.sort((a, b) => {
       if (sort === 'deadline') {
-        const da = a.deadline === '招满即止' ? '9999-12-31' : a.deadline;
-        const db = b.deadline === '招满即止' ? '9999-12-31' : b.deadline;
+        const da = /^\d{4}-\d{2}-\d{2}$/.test(a.deadline) ? a.deadline : '9999-12-31';
+        const db = /^\d{4}-\d{2}-\d{2}$/.test(b.deadline) ? b.deadline : '9999-12-31';
         if (da !== db) return String(da).localeCompare(String(db));
         return String(b.created_at).localeCompare(String(a.created_at));
       }
@@ -1112,24 +1113,52 @@ export const localEngine = {
   },
 
   async createApplication(data = {}) {
-    if (!String(data.company_name || '').trim() || !String(data.job_title || '').trim()) {
+    const companyName = String(data.company_name || '').trim();
+    const jobTitle = String(data.job_title || '').trim();
+    if (!companyName || !jobTitle) {
       throw new Error('请填写公司名称和岗位名称。');
     }
     const status = data.status || 'applied';
     if (!APPLICATION_STATUSES.includes(status)) {
       throw new Error('无效的投递状态值。');
     }
+    const validPriorities = ['high', 'normal', 'low'];
+    const safePriority = validPriorities.includes(data.priority) ? data.priority : 'normal';
+    const seasonTag = String(data.season_tag || '2027届秋招补录').trim();
+
     const catalog = await fetchStaticCatalog();
     const state = readLocalState(catalog);
+
+    if (!data.allowDuplicate) {
+      const dup = state.applications.find((a) => {
+        if (a.status === 'rejected') return false;
+        if (data.job_id && a.job_id === data.job_id) return true;
+        return (
+          String(a.company_name || '').trim().toLowerCase() === companyName.toLowerCase() &&
+          String(a.job_title || '').trim().toLowerCase() === jobTitle.toLowerCase() &&
+          String(a.season_tag || '').trim().toLowerCase() === seasonTag.toLowerCase()
+        );
+      });
+      if (dup) {
+        const err = new Error(
+          `投递看板中已存在「${dup.company_name} · ${dup.job_title}」的在途记录（当前：${STATUS_LABELS[dup.status] || dup.status}）。`,
+        );
+        err.status = 409;
+        err.code = 'DUPLICATE_APPLICATION';
+        err.existing = dup;
+        throw err;
+      }
+    }
+
     const now = new Date().toISOString();
     const record = {
       id: genId('app'),
       job_id: data.job_id || null,
-      company_name: String(data.company_name).trim(),
-      job_title: String(data.job_title).trim(),
+      company_name: companyName,
+      job_title: jobTitle,
       city: String(data.city || '').trim(),
       official_url: String(data.official_url || '').trim(),
-      season_tag: String(data.season_tag || '2027届秋招补录').trim(),
+      season_tag: seasonTag,
       channel: String(data.channel || '官网直投').trim(),
       referral_code: String(data.referral_code || '').trim(),
       resume_id: data.resume_id && state.resumes.some((r) => r.id === data.resume_id) ? data.resume_id : null,
@@ -1137,7 +1166,7 @@ export const localEngine = {
       interview_round: String(data.interview_round || '').trim(),
       next_event_at: String(data.next_event_at || '').trim(),
       applied_at: String(data.applied_at || '').trim() || now.slice(0, 10),
-      priority: data.priority || 'normal',
+      priority: safePriority,
       notes: String(data.notes || '').trim(),
       is_demo: false,
       created_at: now,
@@ -1158,6 +1187,8 @@ export const localEngine = {
     if (!APPLICATION_STATUSES.includes(nextStatus)) {
       throw new Error('无效的投递状态值。');
     }
+    const validPriorities = ['high', 'normal', 'low'];
+    const nextPriority = validPriorities.includes(data.priority) ? data.priority : existing.priority || 'normal';
     const now = new Date().toISOString();
     state.applications[idx] = {
       ...existing,
@@ -1173,7 +1204,7 @@ export const localEngine = {
       interview_round: data.interview_round !== undefined ? String(data.interview_round).trim() : existing.interview_round,
       next_event_at: data.next_event_at !== undefined ? String(data.next_event_at).trim() : existing.next_event_at,
       applied_at: data.applied_at !== undefined ? String(data.applied_at).trim() : existing.applied_at,
-      priority: data.priority !== undefined ? data.priority : existing.priority,
+      priority: nextPriority,
       notes: data.notes !== undefined ? String(data.notes).trim() : existing.notes,
       is_demo: false,
       updated_at: now,

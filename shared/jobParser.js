@@ -116,6 +116,7 @@ export const CITY_PROVINCE_MAP = {
   澳门: { province: '澳门', tier: '其他/海外' },
   台湾: { province: '台湾', tier: '其他/海外' },
   越南: { province: '海外', tier: '其他/海外' },
+  桂武: { province: '海外', tier: '其他/海外' },
   新加坡: { province: '海外', tier: '其他/海外' },
   日本: { province: '海外', tier: '其他/海外' },
   美国: { province: '海外', tier: '其他/海外' },
@@ -132,7 +133,7 @@ export const KNOWN_CITY_NAMES = Object.keys(CITY_PROVINCE_MAP);
 const KNOWN_CITY_NAMES_BY_LENGTH = [...KNOWN_CITY_NAMES].sort((a, b) => b.length - a.length);
 
 const ADMIN_SUFFIX_RE = /(?:特别行政区|(?:彝族|藏族|蒙古族|土家族|苗族|布依族|回族|朝鲜族|哈萨克|白族|傣族|壮族|侗族|哈尼族|羌族|傈僳族|佤族|纳西族|景颇族|柯尔克孜|土族|锡伯|塔吉克|裕固|毛南|仡佬)*自治[州县区]|地区|盟)$/;
-const VAGUE_CITY_RE = /^(?:全国|全国各地|不限|不限城市|多地|其他|未知|暂无|-+)$/i;
+const VAGUE_CITY_RE = /^(?:全国|全国各地|国内|全部|不限|不限城市|多地|其他|其它|未知|暂无|-+)$/i;
 
 function stripCityAdminSuffix(token = '') {
   let t = String(token || '').trim();

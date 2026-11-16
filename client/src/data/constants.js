@@ -229,3 +229,38 @@ export function formatEventCountdown(dateTimeStr) {
   if (diffDays <= 3) return { text: `${diffDays}天后`, tone: 'warning' };
   return { text: `${diffDays}天后`, tone: 'normal' };
 }
+
+export const JOB_SORT_OPTIONS = [
+  { value: 'latest', label: '综合 / 最新发布优先' },
+  { value: 'deadline', label: '临近截止日期优先' },
+];
+
+export const SYNC_SOURCE_META = {
+  ats_auto: { label: '官网 ATS 自动同步', isLiveAts: true },
+  beisen_zhiye: { label: '北森 ATS 官网直抓', isLiveAts: true },
+  hotjob_wecruit: { label: '大易 HotJob 官网直抓', isLiveAts: true },
+  greenhouse: { label: 'Greenhouse 官网接口', isLiveAts: true },
+  lever: { label: 'Lever 官网接口', isLiveAts: true },
+  ashby: { label: 'Ashby 官网接口', isLiveAts: true },
+  rss_atom: { label: 'RSS 订阅同步', isLiveAts: false },
+  json_feed: { label: 'JSON Feed 同步', isLiveAts: false },
+  html_jsonld: { label: '官网结构化页面', isLiveAts: false },
+  batch_import: { label: '批量/公告导入', isLiveAts: false },
+  user_submitted: { label: '手动补充收录', isLiveAts: false },
+  verified_registry: { label: '官方入口方向参考', isLiveAts: false },
+};
+
+export const PRIORITY_OPTIONS = [
+  { value: 'high', label: '高优冲刺', badgeClass: 'border-rose-200 bg-rose-50 text-rose-700' },
+  { value: 'normal', label: '常规投递', badgeClass: 'border-teal-200/80 bg-teal-50/75 text-teal-800' },
+  { value: 'low', label: '保底备选', badgeClass: 'border-slate-200 bg-slate-100 text-slate-600' },
+];
+
+export const PRIORITY_MAP = Object.fromEntries(PRIORITY_OPTIONS.map((p) => [p.value, p]));
+
+export function formatShortDate(isoStr = '') {
+  const clean = String(isoStr || '').trim();
+  if (!clean) return '近期';
+  const match = clean.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : clean.slice(0, 10);
+}

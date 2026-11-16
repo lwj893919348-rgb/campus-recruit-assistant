@@ -302,7 +302,7 @@ export function createJobsRouter(db, { verifier = verifyOfficialUrl } = {}) {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const orderClause =
       sort === 'deadline'
-        ? "ORDER BY CASE WHEN j.deadline = '招满即止' THEN '9999-12-31' ELSE j.deadline END ASC, j.created_at DESC"
+        ? "ORDER BY CASE WHEN j.deadline GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' THEN j.deadline ELSE '9999-12-31' END ASC, j.created_at DESC"
         : "ORDER BY CASE j.status WHEN 'closing_soon' THEN 0 WHEN 'open' THEN 1 ELSE 2 END ASC, j.created_at DESC";
 
     const rows = db

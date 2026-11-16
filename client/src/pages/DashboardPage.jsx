@@ -71,13 +71,13 @@ export const DashboardPage = memo(function DashboardPage({
           <div className="space-y-2.5">
             <div className="inline-flex items-center gap-1.5 rounded-full border border-teal-200/80 bg-teal-50/85 px-3 py-1 text-xs font-medium text-teal-800">
               <ShieldCheck className="h-3.5 w-3.5 text-teal-600" />
-              直连企业校招 / 社招官网 · 杜绝虚假二手岗与培训引流
+              直连企业官网与官方 ATS 系统 · 透明标注原岗详链与方向参考
             </div>
             <h1 className="text-xl font-bold tracking-tight text-[#132A2E] sm:text-2xl">
-              职航 · 全景官方直聘工作台
+              职航 · 大学生校招与官方直聘工作台
             </h1>
             <p className="max-w-2xl text-sm leading-relaxed text-[#4F686C]">
-              覆盖校园招聘、社会招聘与实习兼职 16 大行业职能方向；支持企业公众号公告智能解析、A4 简历精排与全流程投递追踪。
+              主攻校园招聘与实习机会（兼顾社招补录与 16 大行业职能方向）；支持简历防丢自动保存、公众号公告解析与全流程投递防重管理。
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded-full border border-sky-200/80 bg-sky-50/80 px-3 py-1 font-medium text-sky-800">
@@ -260,7 +260,7 @@ export const DashboardPage = memo(function DashboardPage({
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-semibold text-[#132A2E]">热门直聘城市直通车</h2>
-                <p className="text-xs text-slate-500">点击城市一键查看当地真实官网在招岗位（校招 + 社招）</p>
+                <p className="text-xs text-slate-500">点击城市一键查看当地官方渠道在招职位与校招/实习入口</p>
               </div>
               <MapPin className="h-4 w-4 text-teal-600" />
             </div>

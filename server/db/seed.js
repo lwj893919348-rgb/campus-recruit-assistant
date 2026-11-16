@@ -534,14 +534,14 @@ export function upsertBuiltInCatalog(db, options = {}) {
         j.salary_range || '',
         j.requirements_summary || '',
         j.sync_source || 'verified_registry',
-        j.last_checked_at || NOW_ISO,
+        j.last_checked_at || snapshot?.generatedAt || NOW_ISO,
         NOW_ISO,
       );
       if (existingJobIds.has(j.id)) jobsUpdated += 1;
       else jobsAdded += 1;
     }
 
-    // Heal any existing DB rows (including user_submitted or legacy ATS sync rows) with unnormalized city names or drifted city_tier
+    // Heal any existing DB rows (including user_submitted or legacy ATS sync rows) with unnormalized city names, drifted city_tier, or legacy salary slogans
     const updateLocationStmt = db.prepare('UPDATE jobs SET city = ?, province = ?, city_tier = ? WHERE id = ?');
     for (const row of db.prepare('SELECT id, city, province, city_tier FROM jobs').all()) {
       const nextLoc = normalizeJobLocation(row.city, row.province);
@@ -549,6 +549,9 @@ export function upsertBuiltInCatalog(db, options = {}) {
         updateLocationStmt.run(nextLoc.city, nextLoc.province, nextLoc.city_tier, row.id);
       }
     }
+    db.prepare(
+      "UPDATE jobs SET salary_range = '以官网为准' WHERE salary_range IN ('薪资面议/官网披露', '面议/官网披露', '校招竞争力总包', '社招极具竞争力薪酬', '实习日薪+餐补/房补')",
+    ).run();
 
     for (const src of DEFAULT_SYNC_SOURCES) {
       upsertSource.run(

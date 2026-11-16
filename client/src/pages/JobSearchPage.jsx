@@ -35,6 +35,9 @@ import {
   JOB_CATEGORY_OPTIONS,
   STARTUP_ENTITY_PRESETS,
   STAGE_MAP,
+  JOB_SORT_OPTIONS,
+  SYNC_SOURCE_META,
+  formatShortDate,
 } from '../data/constants.js';
 
 function getTianyanchaSearchUrl(keyword = '') {
@@ -119,6 +122,7 @@ export const JobSearchPage = memo(function JobSearchPage({
   const [onlyOpen, setOnlyOpen] = useState(true);
   const [onlyReferral, setOnlyReferral] = useState(false);
   const [onlyExactDetail, setOnlyExactDetail] = useState(false);
+  const [sort, setSort] = useState('latest');
 
   const [jobs, setJobs] = useState([]);
   const [facets, setFacets] = useState({
@@ -195,6 +199,7 @@ export const JobSearchPage = memo(function JobSearchPage({
           onlyOpen: onlyOpen ? '1' : '',
           onlyReferral: onlyReferral ? '1' : '',
           onlyExactDetail: onlyExactDetail ? '1' : '',
+          sort,
         });
         if (reqSeq !== jobRequestSeqRef.current) return;
         setJobs(data.jobs);
@@ -225,6 +230,7 @@ export const JobSearchPage = memo(function JobSearchPage({
       onlyOpen,
       onlyReferral,
       onlyExactDetail,
+      sort,
       onToast,
     ],
   );
@@ -324,6 +330,7 @@ export const JobSearchPage = memo(function JobSearchPage({
     setOnlyOpen(true);
     setOnlyReferral(false);
     setOnlyExactDetail(false);
+    setSort('latest');
   }
 
   async function handleSubscribeCompany(company) {
@@ -548,13 +555,13 @@ export const JobSearchPage = memo(function JobSearchPage({
       <div className="fresh-card flex flex-col justify-between gap-3 rounded-3xl p-5 sm:flex-row sm:items-center">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-lg font-bold tracking-tight text-[#132A2E]">全行业官方直聘搜索与地区筛选</h1>
+            <h1 className="text-lg font-bold tracking-tight text-[#132A2E]">大学生校招与官方直聘检索</h1>
             <span className="rounded-full border border-teal-200/80 bg-teal-50/90 px-2.5 py-0.5 text-[11px] font-semibold text-teal-800">
-              {companies.length} 家官方企业 · {syncSummary?.counts?.openJobs ?? jobs.length} 在招岗（校招/社招/实习）
+              {companies.length} 家官方企业 · {syncSummary?.counts?.openJobs ?? jobs.length} 条收录入口（{facets.exactDetailCount || 0} 条官网直抓原岗）
             </span>
           </div>
           <p className="mt-1 text-xs text-[#4B6366]">
-            覆盖 16 大职能全品类与校招 / 社招 / 实习通道；均标注官方主域名、工商主体与认证招聘公众号，支持公众号公告一键解析导入
+            聚焦校园招聘与实习兼职（含社招补录与 16 大职能分类），直连企业官方域名，清晰区分「官网原岗详情」与「官方方向参考」
           </p>
         </div>
 
@@ -653,8 +660,22 @@ export const JobSearchPage = memo(function JobSearchPage({
                 })}
               </div>
 
-              <div className="flex items-center gap-2 text-xs">
-                <span className="font-medium text-[#4B6366]">经验/身份：</span>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="font-medium text-[#4B6366]">排序：</span>
+                <select
+                  aria-label="岗位排序方式"
+                  data-testid="jobs-sort-select"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value)}
+                  className="fresh-input rounded-xl px-2.5 py-1.5 text-xs font-medium text-[#132A2E]"
+                >
+                  {JOB_SORT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="ml-1 font-medium text-[#4B6366]">经验/身份：</span>
                 <select
                   aria-label="经验要求"
                   value={experienceReq}
@@ -910,7 +931,7 @@ export const JobSearchPage = memo(function JobSearchPage({
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-teal-600" />
             <span>
               <strong>官网详情直达与分级核验说明：</strong>
-              标有绿色「官网原岗 · 直达详情」的职位来自北森 / 大易 HotJob 等官方直连接口，名称与官网完全一致，点击即直达该岗位详情页；其余「参考方向」岗位会提取核心词为您跳转对应企业官网搜索页核验，所有投递入口均限制在企业官方域名。
+              标有绿色「官网原岗 · 直达详情」的职位来自北森 / 大易 HotJob 等官方直连接口，名称与截止日期均同步自官网；其余「参考方向」仅作企业招聘方向参考，薪资统一标为“以官网为准”，点击将跳转企业官网或官网检索页自行核验，所有外链严格限制在企业官方域名内。
             </span>
           </div>
 
@@ -1101,9 +1122,17 @@ export const JobSearchPage = memo(function JobSearchPage({
                     </div>
 
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-teal-900/10 pt-3">
-                      <div className="tabular-nums text-[11px] text-[#4B6366]">
-                        截止：<span className="font-medium text-[#132A2E]">{job.deadline}</span>
-                        {job.salary_range ? <span className="ml-2 text-[#7A9195]">| {job.salary_range}</span> : null}
+                      <div className="space-y-0.5 tabular-nums text-[11px] text-[#4B6366]">
+                        <div>
+                          截止：<span className="font-medium text-[#132A2E]">{job.deadline}</span>
+                          <span className="ml-2 text-[#7A9195]">
+                            | {job.sync_source === 'verified_registry' ? '以官网为准（方向参考）' : job.salary_range || '以官网为准'}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-[#7A9195]">
+                          来源：{SYNC_SOURCE_META[job.sync_source]?.label || '官网/手动收录'} · 核验于{' '}
+                          {formatShortDate(job.last_checked_at || job.created_at)}
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">

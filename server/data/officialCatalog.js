@@ -3114,13 +3114,8 @@ function j({
   const resolvedYears =
     graduation_years ||
     (resolvedRecruitType === '社会招聘' ? ['社招不限'] : ['2027']);
-  const resolvedSalary =
-    salary_range ||
-    (resolvedRecruitType === '社会招聘'
-      ? '社招极具竞争力薪酬'
-      : resolvedRecruitType === '实习兼职'
-        ? '实习日薪+餐补/房补'
-        : '校招竞争力总包');
+  // Verified reference directions have no verified official salary payload; keep honest label instead of estimates.
+  const resolvedSalary = '以官网为准';
   const defaultSourceUrl =
     resolvedRecruitType === '社会招聘' && matchesOfficialDomain(c.official_social_url, c.official_domain)
       ? c.official_social_url

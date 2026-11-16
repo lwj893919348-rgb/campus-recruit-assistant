@@ -115,7 +115,9 @@ export default function App() {
         addToast('success', `已将「${payload.company_name} · ${payload.job_title}」记入投递看板`);
         setRefreshSignal((s) => s + 1);
       } catch (err) {
-        addToast('error', err.message);
+        if (err?.code !== 'DUPLICATE_APPLICATION') {
+          addToast('error', err.message);
+        }
         throw err;
       }
     },
@@ -165,8 +167,8 @@ export default function App() {
               <Compass className="h-5 w-5" />
             </span>
             <div>
-              <div className="text-sm font-bold tracking-tight text-[#132A2E]">职航 · 全景官方直聘助手</div>
-              <div className="text-[11px] text-slate-500">校招 / 社招 / 实习全品类 · 公众号公告解析 · 简历工坊</div>
+              <div className="text-sm font-bold tracking-tight text-[#132A2E]">职航 · 大学生校招与官方直聘助手</div>
+              <div className="text-[11px] text-slate-500">聚焦校招与实习 · 区分官网原岗与参考方向 · 简历与投递追踪</div>
             </div>
           </button>
 

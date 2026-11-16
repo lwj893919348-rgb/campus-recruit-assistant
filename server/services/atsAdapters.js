@@ -123,7 +123,7 @@ function buildNormalizedItem({
     experienceReq: inferredType.experienceReq,
     seasonTag: inferredType.seasonTag,
     graduationYears: inferredType.graduationYears,
-    salaryRange: String(salaryRange || '').trim() || '薪资面议/官网披露',
+    salaryRange: String(salaryRange || '').trim() || '以官网为准',
     deadline: String(deadline || '').trim() || '长期有效/招满即止',
     publishedAt: String(publishedAt || '').trim() || new Date().toISOString().slice(0, 10),
     description: String(description || '').trim(),

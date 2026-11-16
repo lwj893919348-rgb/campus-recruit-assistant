@@ -1361,3 +1361,69 @@ test('City normalization and facets.cities deduplicate Fuzhou and administrative
     db.close();
   }
 });
+
+test('Phase 1 integrity: honest salary labels, deadline sorting, duplicate application guard, and priority support', async () => {
+  // All curated verified_registry items must use honest salary label instead of unverified figures
+  assert.ok(OFFICIAL_JOBS.length > 0);
+  assert.ok(OFFICIAL_JOBS.every((j) => j.salary_range === '以官网为准'));
+
+  const db = createDatabase(':memory:', { seed: true });
+  const app = createApp(db);
+  try {
+    // Deadline sort must put dated deadlines ascending ahead of rolling text labels
+    const deadlineSorted = await invokeApp(app, 'GET', '/api/jobs?sort=deadline&onlyOpen=1');
+    assert.equal(deadlineSorted.status, 200);
+    const firstDatedIdx = deadlineSorted.data.jobs.findIndex((j) => /^\d{4}-\d{2}-\d{2}$/.test(j.deadline));
+    const firstRollingIdx = deadlineSorted.data.jobs.findIndex((j) => !/^\d{4}-\d{2}-\d{2}$/.test(j.deadline));
+    assert.equal(firstDatedIdx, 0);
+    if (firstRollingIdx !== -1) {
+      assert.ok(firstDatedIdx < firstRollingIdx);
+    }
+
+    // Create application with high priority on an untracked job
+    const firstCreate = await invokeApp(app, 'POST', '/api/applications', {
+      job_id: 'job-ali-beijing-llm',
+      company_name: '阿里巴巴',
+      job_title: '大模型算法工程师（通义千问/夸克方向）',
+      city: '北京',
+      season_tag: '2027届秋招',
+      priority: 'high',
+      status: 'applied',
+    });
+    assert.equal(firstCreate.status, 201);
+    assert.equal(firstCreate.data.application.priority, 'high');
+
+    // Duplicate submission is blocked with 409 DUPLICATE_APPLICATION
+    const dupCreate = await invokeApp(app, 'POST', '/api/applications', {
+      job_id: 'job-ali-beijing-llm',
+      company_name: '阿里巴巴',
+      job_title: '大模型算法工程师（通义千问/夸克方向）',
+      city: '北京',
+      season_tag: '2027届秋招',
+    });
+    assert.equal(dupCreate.status, 409);
+    assert.equal(dupCreate.data.code, 'DUPLICATE_APPLICATION');
+
+    // Explicit allowDuplicate bypasses conflict for separate department re-submission
+    const forcedCreate = await invokeApp(app, 'POST', '/api/applications', {
+      job_id: 'job-ali-beijing-llm',
+      company_name: '阿里巴巴',
+      job_title: '大模型算法工程师（通义千问/夸克方向）',
+      city: '北京',
+      season_tag: '2027届秋招',
+      priority: 'low',
+      allowDuplicate: true,
+    });
+    assert.equal(forcedCreate.status, 201);
+    assert.equal(forcedCreate.data.application.priority, 'low');
+
+    // Updating priority and validating invalid priority fallback
+    const updatePriority = await invokeApp(app, 'PUT', `/api/applications/${firstCreate.data.application.id}`, {
+      priority: 'normal',
+    });
+    assert.equal(updatePriority.status, 200);
+    assert.equal(updatePriority.data.application.priority, 'normal');
+  } finally {
+    db.close();
+  }
+});

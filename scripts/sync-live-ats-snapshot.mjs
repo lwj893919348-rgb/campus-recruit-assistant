@@ -143,10 +143,11 @@ async function main() {
           deadline: item.deadline || '长期有效/招满即止',
           status: computeSnapshotStatus(item.deadline, todayIso),
           is_referral: 0,
-          salary_range: item.salaryRange || '面议/官网披露',
+          salary_range: item.salaryRange || '以官网为准',
           requirements_summary:
             item.requirements || item.description || '来自企业官方 ATS 公开接口实时同步，点击“直达岗位详情页”查看完整要求。',
           sync_source: ats.platform,
+          last_checked_at: nowIso,
           created_at: published,
         };
       });

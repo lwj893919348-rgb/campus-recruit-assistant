@@ -20,6 +20,39 @@ function escapeCsvCell(val) {
   return str;
 }
 
+const VALID_PRIORITIES = new Set(['high', 'normal', 'low']);
+
+function findDuplicateApplication(db, { jobId, companyName, jobTitle, seasonTag }) {
+  if (jobId) {
+    const byJobId = db
+      .prepare(
+        `
+      SELECT id, company_name, job_title, status, applied_at
+      FROM applications
+      WHERE job_id = ? AND status != 'rejected'
+      LIMIT 1
+    `,
+      )
+      .get(jobId);
+    if (byJobId) return byJobId;
+  }
+  return (
+    db
+      .prepare(
+        `
+      SELECT id, company_name, job_title, status, applied_at
+      FROM applications
+      WHERE LOWER(TRIM(company_name)) = LOWER(?)
+        AND LOWER(TRIM(job_title)) = LOWER(?)
+        AND LOWER(TRIM(season_tag)) = LOWER(?)
+        AND status != 'rejected'
+      LIMIT 1
+    `,
+      )
+      .get(companyName.trim(), jobTitle.trim(), String(seasonTag || '').trim()) || null
+  );
+}
+
 export function createApplicationsRouter(db) {
   const router = express.Router();
 
@@ -155,6 +188,7 @@ export function createApplicationsRouter(db) {
       applied_at = new Date().toISOString().slice(0, 10),
       priority = 'normal',
       notes = '',
+      allowDuplicate = false,
     } = req.body || {};
 
     if (!company_name.trim() || !job_title.trim()) {
@@ -164,6 +198,8 @@ export function createApplicationsRouter(db) {
     if (!APPLICATION_STATUSES.includes(status)) {
       return res.status(400).json({ error: '无效的投递状态值。' });
     }
+
+    const safePriority = VALID_PRIORITIES.has(priority) ? priority : 'normal';
 
     let safeResumeId = resume_id || null;
     if (safeResumeId) {
@@ -175,6 +211,22 @@ export function createApplicationsRouter(db) {
     if (safeJobId) {
       const exists = db.prepare('SELECT id FROM jobs WHERE id = ?').get(safeJobId);
       if (!exists) safeJobId = null;
+    }
+
+    if (!allowDuplicate) {
+      const dup = findDuplicateApplication(db, {
+        jobId: safeJobId,
+        companyName: company_name,
+        jobTitle: job_title,
+        seasonTag: season_tag,
+      });
+      if (dup) {
+        return res.status(409).json({
+          code: 'DUPLICATE_APPLICATION',
+          error: `投递看板中已存在「${dup.company_name} · ${dup.job_title}」的在途记录（当前：${STATUS_LABELS[dup.status] || dup.status}）。`,
+          existing: dup,
+        });
+      }
     }
 
     const id = `app-${crypto.randomBytes(5).toString('hex')}`;
@@ -203,7 +255,7 @@ export function createApplicationsRouter(db) {
       interview_round.trim(),
       next_event_at.trim(),
       applied_at.trim() || now.slice(0, 10),
-      priority,
+      safePriority,
       notes.trim(),
       now,
       now,
@@ -280,7 +332,7 @@ export function createApplicationsRouter(db) {
       interview_round !== undefined ? String(interview_round).trim() : existing.interview_round,
       next_event_at !== undefined ? String(next_event_at).trim() : existing.next_event_at,
       applied_at !== undefined ? String(applied_at).trim() : existing.applied_at,
-      priority !== undefined ? priority : existing.priority,
+      priority !== undefined && VALID_PRIORITIES.has(priority) ? priority : existing.priority,
       notes !== undefined ? String(notes).trim() : existing.notes,
       now,
       req.params.id,

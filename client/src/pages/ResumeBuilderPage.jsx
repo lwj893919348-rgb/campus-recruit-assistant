@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   LayoutTemplate,
+  Undo2,
 } from 'lucide-react';
 import { api } from '../api/client.js';
 import { ResumeSheet } from '../components/ResumeSheet.jsx';
@@ -28,6 +29,8 @@ import {
 } from '../data/constants.js';
 
 const A4_HEIGHT_PX = 1122.5; // 297mm at 96dpi
+const AUTO_SAVE_DELAY_MS = 1500;
+const MAX_UNDO_STEPS = 20;
 
 function makeId(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
@@ -46,6 +49,9 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [autoSaveState, setAutoSaveState] = useState('saved'); // 'saved' | 'dirty' | 'saving' | 'error'
+  const [lastSavedAt, setLastSavedAt] = useState('');
+  const [undoStack, setUndoStack] = useState([]);
 
   const [openEditorSection, setOpenEditorSection] = useState('basic');
   const [zoom, setZoom] = useState(0.72);
@@ -54,6 +60,10 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
   const hasLoadedRef = useRef(false);
   const sheetRef = useRef(null);
   const fileInputRef = useRef(null);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const editSeqRef = useRef(0);
+  const lastUndoGroupRef = useRef(0);
 
   const fetchResumes = useCallback(
     async (preferId) => {
@@ -70,6 +80,9 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
           setCurrentId(chosen.id);
           setDraft(structuredClone(chosen));
           setDirty(false);
+          setAutoSaveState('saved');
+          setUndoStack([]);
+          lastUndoGroupRef.current = 0;
         }
         hasLoadedRef.current = true;
       } catch (err) {
@@ -92,6 +105,9 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
         setCurrentId(target.id);
         setDraft(structuredClone(target));
         setDirty(false);
+        setAutoSaveState('saved');
+        setUndoStack([]);
+        lastUndoGroupRef.current = 0;
       } else {
         fetchResumes(activeResumeIdFromNav);
       }
@@ -115,12 +131,30 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
   }, [draft, isActive]);
 
   function updateDraft(updater) {
+    editSeqRef.current += 1;
     setDraft((prev) => {
       if (!prev) return prev;
-      const next = typeof updater === 'function' ? updater(prev) : { ...prev, ...updater };
-      return next;
+      const nowMs = Date.now();
+      if (nowMs - lastUndoGroupRef.current > 600) {
+        const snapshot = structuredClone(prev);
+        setUndoStack((stack) => [...stack.slice(-(MAX_UNDO_STEPS - 1)), snapshot]);
+      }
+      lastUndoGroupRef.current = nowMs;
+      return typeof updater === 'function' ? updater(prev) : { ...prev, ...updater };
     });
     setDirty(true);
+    setAutoSaveState('dirty');
+  }
+
+  function handleUndo() {
+    if (undoStack.length === 0) return;
+    const prevSnapshot = undoStack[undoStack.length - 1];
+    setUndoStack((stack) => stack.slice(0, -1));
+    lastUndoGroupRef.current = 0;
+    editSeqRef.current += 1;
+    setDraft(prevSnapshot);
+    setDirty(true);
+    setAutoSaveState('dirty');
   }
 
   function updateContent(field, value) {
@@ -146,35 +180,81 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
     }));
   }
 
-  async function handleSave(showSuccessToast = true) {
-    if (!draft) return;
-    setSaving(true);
-    try {
-      const { resume } = await api.updateResume(draft.id, {
-        title: draft.title,
-        template_id: draft.template_id,
-        theme_color: draft.theme_color,
-        font_scale: draft.font_scale,
-        margin_preset: draft.margin_preset,
-        section_order: draft.section_order,
-        hidden_sections: draft.hidden_sections,
-        content_json: draft.content_json,
-        is_default: draft.is_default,
-      });
-      setResumes((prev) => {
-        const nextList = prev.map((r) => (r.id === resume.id ? resume : r));
-        onResumesChanged?.(nextList);
-        return nextList;
-      });
-      setDirty(false);
-      onDataMutated?.();
-      if (showSuccessToast) onToast('success', `简历「${resume.title}」已保存`);
-    } catch (err) {
-      onToast('error', err.message);
-    } finally {
-      setSaving(false);
-    }
-  }
+  const handleSave = useCallback(
+    async (showSuccessToast = true) => {
+      const currentDraft = draftRef.current;
+      if (!currentDraft) return;
+      const savedSeq = editSeqRef.current;
+      setSaving(true);
+      setAutoSaveState('saving');
+      try {
+        const { resume } = await api.updateResume(currentDraft.id, {
+          title: currentDraft.title,
+          template_id: currentDraft.template_id,
+          theme_color: currentDraft.theme_color,
+          font_scale: currentDraft.font_scale,
+          margin_preset: currentDraft.margin_preset,
+          section_order: currentDraft.section_order,
+          hidden_sections: currentDraft.hidden_sections,
+          content_json: currentDraft.content_json,
+          is_default: currentDraft.is_default,
+        });
+        setResumes((prev) => {
+          const nextList = prev.map((r) => (r.id === resume.id ? resume : r));
+          onResumesChanged?.(nextList);
+          return nextList;
+        });
+        if (editSeqRef.current === savedSeq) {
+          setDirty(false);
+          setAutoSaveState('saved');
+          setLastSavedAt(
+            new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
+          );
+        }
+        onDataMutated?.();
+        if (showSuccessToast) onToast('success', `简历「${resume.title}」已保存`);
+      } catch (err) {
+        setAutoSaveState('error');
+        if (showSuccessToast) onToast('error', err.message);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [onResumesChanged, onDataMutated, onToast],
+  );
+
+  // Debounced auto-save after edits pause for 1.5s
+  useEffect(() => {
+    if (!dirty || !draft) return undefined;
+    const timer = setTimeout(() => {
+      handleSave(false);
+    }, AUTO_SAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [dirty, draft, handleSave]);
+
+  // Guard against accidental tab close / refresh while edits remain unsaved
+  useEffect(() => {
+    if (!dirty && !saving) return undefined;
+    const onBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty, saving]);
+
+  // Support Ctrl/Cmd + S quick save while Resume Builder is active
+  useEffect(() => {
+    if (!isActive || !draft) return undefined;
+    const onKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSave(true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isActive, draft, handleSave]);
 
   async function handleSelectResume(id) {
     if (dirty && draft) {
@@ -185,6 +265,9 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
       setCurrentId(id);
       setDraft(structuredClone(target));
       setDirty(false);
+      setAutoSaveState('saved');
+      setUndoStack([]);
+      lastUndoGroupRef.current = 0;
     }
   }
 
@@ -386,14 +469,34 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">
-            {dirty ? '有未保存修改' : '已同步本地库'}
+        <div className="flex flex-wrap items-center gap-2">
+          <span data-testid="resume-autosave-status" className="text-xs text-slate-500 tabular-nums">
+            {autoSaveState === 'saving'
+              ? '自动保存中...'
+              : autoSaveState === 'dirty'
+                ? '未保存（稍后自动保存）'
+                : autoSaveState === 'error'
+                  ? '自动保存失败，请手动重试'
+                  : lastSavedAt
+                    ? `已于 ${lastSavedAt} 自动保存`
+                    : '已同步本地库'}
           </span>
+          <button
+            type="button"
+            data-testid="resume-undo-btn"
+            onClick={handleUndo}
+            disabled={undoStack.length === 0}
+            title={undoStack.length > 0 ? `撤销上一步修改（剩余 ${undoStack.length} 步）` : '暂无可撤销操作'}
+            className="fresh-btn-secondary inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-medium disabled:opacity-40"
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+            撤销
+          </button>
           <button
             type="button"
             onClick={() => handleSave(true)}
             disabled={saving}
+            title="立即保存（快捷键 Ctrl+S / Cmd+S）"
             className="fresh-btn-secondary inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold disabled:opacity-60"
           >
             <Save className="h-3.5 w-3.5 text-blue-600" />

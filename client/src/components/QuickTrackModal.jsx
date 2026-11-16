@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { X, Building2, MapPin, Link2, FileText, Sparkles } from 'lucide-react';
-import { APPLICATION_STAGES } from '../data/constants.js';
+import { X, Building2, MapPin, Link2, FileText, Sparkles, AlertTriangle } from 'lucide-react';
+import { APPLICATION_STAGES, PRIORITY_OPTIONS } from '../data/constants.js';
 
 export function QuickTrackModal({ open, job, resumes, onClose, onSubmit }) {
   const [status, setStatus] = useState('applied');
   const [channel, setChannel] = useState('官网直投');
+  const [priority, setPriority] = useState('normal');
   const [referralCode, setReferralCode] = useState('');
   const [resumeId, setResumeId] = useState('');
   const [interviewRound, setInterviewRound] = useState('');
@@ -12,25 +13,27 @@ export function QuickTrackModal({ open, job, resumes, onClose, onSubmit }) {
   const [appliedAt, setAppliedAt] = useState(() => new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState(null);
 
   useEffect(() => {
     if (open) {
       const def = resumes.find((r) => r.is_default) || resumes[0];
       setResumeId(def ? def.id : '');
       setStatus('applied');
-      setChannel(job?.is_referral ? '官网直投' : '官网直投');
+      setChannel('官网直投');
+      setPriority('normal');
       setReferralCode('');
       setInterviewRound('');
       setNextEventAt('');
       setAppliedAt(new Date().toISOString().slice(0, 10));
       setNotes('');
+      setDuplicateWarning(null);
     }
   }, [open, job, resumes]);
 
   if (!open || !job) return null;
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function submitApplication(allowDuplicate = false) {
     setSubmitting(true);
     try {
       await onSubmit({
@@ -41,6 +44,7 @@ export function QuickTrackModal({ open, job, resumes, onClose, onSubmit }) {
         official_url: job.official_source_url,
         season_tag: job.season_tag,
         channel,
+        priority,
         referral_code: referralCode,
         resume_id: resumeId || null,
         status,
@@ -48,11 +52,22 @@ export function QuickTrackModal({ open, job, resumes, onClose, onSubmit }) {
         next_event_at: nextEventAt,
         applied_at: appliedAt,
         notes,
+        allowDuplicate,
       });
       onClose();
+    } catch (err) {
+      if (err?.code === 'DUPLICATE_APPLICATION') {
+        setDuplicateWarning({ message: err.message, existing: err.existing || null });
+      }
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    setDuplicateWarning(null);
+    submitApplication(false);
   }
 
   return (
@@ -95,13 +110,13 @@ export function QuickTrackModal({ open, job, resumes, onClose, onSubmit }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">当前投递状态</label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
-                className="fresh-input w-full rounded-xl px-3 py-2 text-sm"
+                className="fresh-input w-full rounded-xl px-2.5 py-2 text-sm"
               >
                 {APPLICATION_STAGES.map((st) => (
                   <option key={st.key} value={st.key}>
@@ -112,11 +127,26 @@ export function QuickTrackModal({ open, job, resumes, onClose, onSubmit }) {
             </div>
 
             <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">投递优先级</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className="fresh-input w-full rounded-xl px-2.5 py-2 text-sm"
+              >
+                {PRIORITY_OPTIONS.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">投递渠道</label>
               <select
                 value={channel}
                 onChange={(e) => setChannel(e.target.value)}
-                className="fresh-input w-full rounded-xl px-3 py-2 text-sm"
+                className="fresh-input w-full rounded-xl px-2.5 py-2 text-sm"
               >
                 <option value="官网直投">官网直投</option>
                 <option value="内推通道">校招 / 社招内推</option>
@@ -194,15 +224,37 @@ export function QuickTrackModal({ open, job, resumes, onClose, onSubmit }) {
           )}
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">备忘笔记（官网账号 / 岗位重点）</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600">投递备注与面试记录</label>
             <textarea
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="例如：用学校邮箱注册网申；需注意该岗位无笔试直接约面..."
+              placeholder="例如：重点关注岗位技能关键词与笔试节奏（请勿记录真实账号密码等敏感凭证）..."
               className="fresh-input w-full rounded-xl px-3 py-2 text-sm placeholder:text-slate-400"
             />
           </div>
+
+          {duplicateWarning && (
+            <div
+              data-testid="duplicate-app-warning"
+              className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50/90 p-3 text-xs text-amber-900"
+            >
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <span>{duplicateWarning.message}</span>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => submitApplication(true)}
+                  disabled={submitting}
+                  className="rounded-xl border border-amber-300 bg-white px-3 py-1 font-semibold text-amber-800 hover:bg-amber-100"
+                >
+                  确系补投/不同部门，仍继续记录
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-end gap-2.5 border-t border-teal-900/[0.06] pt-3">
             <button
