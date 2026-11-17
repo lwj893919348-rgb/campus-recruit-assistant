@@ -7,6 +7,7 @@ import {
   ShieldCheck,
   ExternalLink,
   Plus,
+  RefreshCw,
   CheckCircle2,
   Sparkles,
   Globe,
@@ -97,6 +98,7 @@ export const JobSearchPage = memo(function JobSearchPage({
   const companySentinelRef = useRef(null);
 
   const [copiedWechatId, setCopiedWechatId] = useState(null);
+  const [updatingJobs, setUpdatingJobs] = useState(false);
   const [companyQuery, setCompanyQuery] = useState('');
   const [companyWallType, setCompanyWallType] = useState('全部');
   const [portalKeyword, setPortalKeyword] = useState('');
@@ -253,6 +255,24 @@ export const JobSearchPage = memo(function JobSearchPage({
     setOnlyReferral(false);
     setOnlyExactDetail(false);
     setSort('latest');
+  }
+
+  async function handleQuickUpdateJobs() {
+    setUpdatingJobs(true);
+    try {
+      const res = await api.runSync({});
+      await Promise.all([loadJobs(), loadCompanies()]);
+      const summaryParts = [];
+      if (res.addedCount > 0) summaryParts.push(`新增 ${res.addedCount} 条`);
+      if (res.updatedCount > 0) summaryParts.push(`更新/预警 ${res.updatedCount} 条`);
+      if (res.expiredCount > 0) summaryParts.push(`下线过期 ${res.expiredCount} 条`);
+      const detail = summaryParts.length > 0 ? summaryParts.join('，') : '已获取最新官网岗位与截止状态';
+      onToast('success', `岗位已更新：${detail}（共 ${res.counts?.openJobs ?? jobs.length} 个在招岗）。`);
+    } catch (err) {
+      onToast('error', `更新失败：${err.message}`);
+    } finally {
+      setUpdatingJobs(false);
+    }
   }
 
   async function handleCopyWechat(id, accountName) {
@@ -479,6 +499,17 @@ export const JobSearchPage = memo(function JobSearchPage({
                   className="fresh-input w-full rounded-xl py-2 pr-4 pl-10 text-sm text-[#132A2E] placeholder:text-[#7A9195]"
                 />
               </div>
+
+              <button
+                type="button"
+                data-testid="jobs-refresh-btn"
+                onClick={handleQuickUpdateJobs}
+                disabled={updatingJobs}
+                className="fresh-btn-primary inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold disabled:opacity-60"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${updatingJobs ? 'animate-spin' : ''}`} />
+                {updatingJobs ? '更新中...' : '更新岗位'}
+              </button>
 
               <button
                 type="button"
