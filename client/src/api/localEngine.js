@@ -11,6 +11,12 @@ import {
   getCompanyAtsSupport,
 } from '../../../shared/atsPlatforms.js';
 import { resolveJobOfficialTarget } from '../../../shared/jobLinkResolver.js';
+import {
+  DEFAULT_SECTION_ORDER,
+  createBlankResumeContent,
+  createStarterTemplateResumes,
+  isLegacySamplePersona,
+} from '../../../shared/resumeDefaults.js';
 
 const STORAGE_KEY = 'zhihang_campus_static_v1';
 
@@ -313,6 +319,44 @@ function computeDeadlineStatus(job) {
   return 'open';
 }
 
+function migrateLegacyResumes(resumes = []) {
+  const starterMap = new Map(createStarterTemplateResumes().map((tpl) => [tpl.id, tpl]));
+  let migrated = false;
+  const nextResumes = resumes.map((row) => {
+    if (!isLegacySamplePersona(row)) return row;
+    const starter = starterMap.get(row.id);
+    if (!starter) return row;
+    migrated = true;
+    return {
+      ...row,
+      title: starter.title,
+      template_id: starter.template_id,
+      theme_color: starter.theme_color,
+      font_scale: starter.font_scale,
+      margin_preset: starter.margin_preset,
+      section_order: [...starter.section_order],
+      hidden_sections: [...starter.hidden_sections],
+      content_json: createBlankResumeContent(),
+      is_default: Boolean(starter.is_default),
+    };
+  });
+
+  if (migrated && !nextResumes.some((r) => r.id === 'resume-creative-sample')) {
+    const creativeStarter = starterMap.get('resume-creative-sample');
+    if (creativeStarter) {
+      const now = new Date().toISOString();
+      nextResumes.push({
+        ...creativeStarter,
+        is_default: Boolean(creativeStarter.is_default),
+        created_at: now,
+        updated_at: now,
+      });
+    }
+  }
+
+  return { resumes: nextResumes, migrated };
+}
+
 function readLocalState(catalog) {
   let state = null;
   try {
@@ -324,7 +368,7 @@ function readLocalState(catalog) {
 
   if (!state || typeof state !== 'object') {
     state = {
-      seededVersion: 1,
+      seededVersion: 2,
       resumes: catalog.resumes || [],
       applications: catalog.applications || [],
       userJobs: [],
@@ -335,6 +379,16 @@ function readLocalState(catalog) {
       syncRuns: [],
     };
     saveLocalState(state);
+  } else if (Array.isArray(state.resumes)) {
+    const { resumes: upgradedResumes, migrated } = migrateLegacyResumes(state.resumes);
+    if (migrated || (state.seededVersion || 1) < 2) {
+      state = {
+        ...state,
+        seededVersion: 2,
+        resumes: upgradedResumes,
+      };
+      saveLocalState(state);
+    }
   }
 
   return {
@@ -403,54 +457,6 @@ function triggerDownload(filename, content, mimeType) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-}
-
-function createEmptyResumeContent() {
-  return {
-    basic: {
-      name: '张同学',
-      phone: '138-0000-0000',
-      email: 'student@university.edu.cn',
-      city: '期望城市：北京 / 上海 / 杭州',
-      targetRole: '校招应届生岗位',
-      github: '',
-      politicalStatus: '共青团员',
-      hometown: '',
-      englishLevel: 'CET-6',
-      gradDate: '2027年6月',
-      avatar: '',
-    },
-    education: [
-      {
-        id: 'edu-new-1',
-        school: 'XX大学',
-        degree: '本科',
-        major: '计算机科学与技术',
-        period: '2023.09 - 2027.06',
-        gpa: 'GPA 3.6/4.0',
-        courses: '数据结构、操作系统、计算机网络、数据库原理',
-      },
-    ],
-    internship: [],
-    projects: [
-      {
-        id: 'proj-new-1',
-        name: '校内课程实践 / 核心项目名称',
-        role: '核心开发者',
-        period: '2026.03 - 2026.06',
-        link: '',
-        bullets: [
-          '使用 STAR 法则描述：针对【具体痛点/背景】，采取了【核心技术与方案】，最终实现【量化指标提升，如性能提升 40%】。',
-        ],
-      },
-    ],
-    campus: [],
-    skills: [
-      { id: 'sk-new-1', label: '核心技能', items: '请填写与目标校招岗位匹配的技能关键词（利于企业 ATS 筛选）' },
-    ],
-    awards: [],
-    summary: '',
-  };
 }
 
 function enrichApplications(state) {
@@ -997,9 +1003,9 @@ export const localEngine = {
       theme_color: data.theme_color || '#2563EB',
       font_scale: data.font_scale || 'standard',
       margin_preset: data.margin_preset || 'standard',
-      section_order: data.section_order || ['education', 'internship', 'projects', 'skills', 'campus', 'awards', 'summary'],
+      section_order: data.section_order || [...DEFAULT_SECTION_ORDER],
       hidden_sections: data.hidden_sections || [],
-      content_json: data.content_json || createEmptyResumeContent(),
+      content_json: data.content_json || createBlankResumeContent(),
       is_default: isDefault,
       created_at: now,
       updated_at: now,

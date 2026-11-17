@@ -276,7 +276,13 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
     const title = window.prompt('请输入新简历版本名称（例如：2027秋招-产品经理版）', '我的校招简历');
     if (!title) return;
     try {
-      const { resume } = await api.createResume({ title });
+      const { resume } = await api.createResume({
+        title,
+        template_id: draft?.template_id || 'tech-minimal',
+        theme_color: draft?.theme_color || '#2563EB',
+        font_scale: draft?.font_scale || 'standard',
+        margin_preset: draft?.margin_preset || 'standard',
+      });
       onToast('success', `已创建新简历「${resume.title}」`);
       await fetchResumes(resume.id);
       onDataMutated?.();
@@ -629,16 +635,16 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
               onToggle={() => setOpenEditorSection(openEditorSection === 'basic' ? '' : 'basic')}
             >
               <div className="grid grid-cols-2 gap-2.5 text-xs">
-                <InputField label="姓名" value={basic.name} onChange={(v) => updateBasic('name', v)} />
-                <InputField label="求职意向" value={basic.targetRole} onChange={(v) => updateBasic('targetRole', v)} />
-                <InputField label="联系电话" value={basic.phone} onChange={(v) => updateBasic('phone', v)} />
-                <InputField label="电子邮箱" value={basic.email} onChange={(v) => updateBasic('email', v)} />
-                <InputField label="期望城市" value={basic.city} onChange={(v) => updateBasic('city', v)} />
-                <InputField label="毕业时间" value={basic.gradDate} onChange={(v) => updateBasic('gradDate', v)} />
-                <InputField label="英语水平" value={basic.englishLevel} onChange={(v) => updateBasic('englishLevel', v)} />
-                <InputField label="GitHub / 作品集" value={basic.github} onChange={(v) => updateBasic('github', v)} />
-                <InputField label="政治面貌（国企可用）" value={basic.politicalStatus} onChange={(v) => updateBasic('politicalStatus', v)} />
-                <InputField label="籍贯生源（国企可用）" value={basic.hometown} onChange={(v) => updateBasic('hometown', v)} />
+                <InputField label="姓名" placeholder="请输入你的姓名" value={basic.name} onChange={(v) => updateBasic('name', v)} />
+                <InputField label="求职意向" placeholder="如：后端开发工程师（2027届）" value={basic.targetRole} onChange={(v) => updateBasic('targetRole', v)} />
+                <InputField label="联系电话" placeholder="如：138-xxxx-xxxx" value={basic.phone} onChange={(v) => updateBasic('phone', v)} />
+                <InputField label="电子邮箱" placeholder="如：name@example.edu.cn" value={basic.email} onChange={(v) => updateBasic('email', v)} />
+                <InputField label="期望城市" placeholder="如：杭州 / 上海 / 北京" value={basic.city} onChange={(v) => updateBasic('city', v)} />
+                <InputField label="毕业时间" placeholder="如：2027年6月" value={basic.gradDate} onChange={(v) => updateBasic('gradDate', v)} />
+                <InputField label="英语水平" placeholder="如：CET-6 / IELTS 6.5" value={basic.englishLevel} onChange={(v) => updateBasic('englishLevel', v)} />
+                <InputField label="GitHub / 作品集" placeholder="选填，如：github.com/username" value={basic.github} onChange={(v) => updateBasic('github', v)} />
+                <InputField label="政治面貌（国企可用）" placeholder="如：共青团员 / 中共党员" value={basic.politicalStatus} onChange={(v) => updateBasic('politicalStatus', v)} />
+                <InputField label="籍贯生源（国企可用）" placeholder="如：浙江杭州" value={basic.hometown} onChange={(v) => updateBasic('hometown', v)} />
               </div>
               <div className="mt-3 flex items-center gap-3 border-t border-slate-100 pt-2.5 text-xs">
                 <label className="cursor-pointer rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 font-medium text-slate-700 hover:bg-slate-100">
@@ -684,6 +690,7 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                     <div className="grid grid-cols-2 gap-2">
                       <InputField
                         label="学校名称"
+                        placeholder="请填写高校全称"
                         value={edu.school}
                         onChange={(v) =>
                           updateContent(
@@ -694,6 +701,7 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                       />
                       <InputField
                         label="学历层次"
+                        placeholder="如：本科 / 硕士"
                         value={edu.degree}
                         onChange={(v) =>
                           updateContent(
@@ -704,6 +712,7 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                       />
                       <InputField
                         label="专业名称"
+                        placeholder="如：计算机科学与技术"
                         value={edu.major}
                         onChange={(v) =>
                           updateContent(
@@ -714,6 +723,7 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                       />
                       <InputField
                         label="起止时间"
+                        placeholder="如：2023.09 - 2027.06"
                         value={edu.period}
                         onChange={(v) =>
                           updateContent(
@@ -725,6 +735,7 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                       <div className="col-span-2">
                         <InputField
                           label="GPA / 专业排名"
+                          placeholder="选填，如：GPA 3.7/4.0（专业前 10%）"
                           value={edu.gpa}
                           onChange={(v) =>
                             updateContent(
@@ -737,6 +748,7 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                       <div className="col-span-2">
                         <InputField
                           label="主修核心课程"
+                          placeholder="选填，如：数据结构、操作系统、计算机网络"
                           value={edu.courses}
                           onChange={(v) =>
                             updateContent(
@@ -757,9 +769,9 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                       {
                         id: makeId('edu'),
                         school: '',
-                        degree: '本科',
+                        degree: '',
                         major: '',
-                        period: '2023.09 - 2027.06',
+                        period: '',
                         gpa: '',
                         courses: '',
                       },
@@ -784,7 +796,7 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                   id: '',
                   company: '',
                   role: '',
-                  period: '2024.06 - 至今',
+                  period: '',
                   city: '',
                   bullets: [''],
                 }}
@@ -792,6 +804,12 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                 primaryKey="company"
                 secondaryLabel="担任岗位"
                 secondaryKey="role"
+                placeholders={{
+                  primary: '请填写公司及所在部门',
+                  secondary: '如：后端开发实习生',
+                  period: '如：2026.06 - 2026.09',
+                  city: '如：杭州',
+                }}
                 showCity
                 onChange={(next) => updateContent('internship', next)}
               />
@@ -809,7 +827,7 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                   id: '',
                   name: '',
                   role: '',
-                  period: '2026.01 - 2026.05',
+                  period: '',
                   link: '',
                   bullets: [''],
                 }}
@@ -817,6 +835,12 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                 primaryKey="name"
                 secondaryLabel="担任角色"
                 secondaryKey="role"
+                placeholders={{
+                  primary: '请填写核心项目名称',
+                  secondary: '如：核心开发 / 项目负责人',
+                  period: '如：2026.01 - 2026.05',
+                  link: '选填，如 GitHub 或在线演示地址',
+                }}
                 showLink
                 onChange={(next) => updateContent('projects', next)}
               />
@@ -834,13 +858,18 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                   id: '',
                   org: '',
                   role: '',
-                  period: '2024.09 - 2025.09',
+                  period: '',
                   bullets: [''],
                 }}
                 primaryLabel="组织 / 实验室"
                 primaryKey="org"
                 secondaryLabel="担任职务"
                 secondaryKey="role"
+                placeholders={{
+                  primary: '如：实验室 / 校学生会 / 竞赛协会',
+                  secondary: '如：技术部部长 / 核心研究助理',
+                  period: '如：2024.09 - 2025.09',
+                }}
                 onChange={(next) => updateContent('campus', next)}
               />
             </AccordionPanel>
@@ -862,8 +891,8 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                           content.skills.map((i) => (i.id === sk.id ? { ...i, label: e.target.value } : i)),
                         )
                       }
-                      placeholder="分类"
-                      className="fresh-input w-24 shrink-0 rounded-xl px-2.5 py-1.5"
+                      placeholder="分类（如：编程语言）"
+                      className="fresh-input w-28 shrink-0 rounded-xl px-2.5 py-1.5"
                     />
                     <input
                       value={sk.items}
@@ -873,7 +902,7 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                           content.skills.map((i) => (i.id === sk.id ? { ...i, items: e.target.value } : i)),
                         )
                       }
-                      placeholder="技能关键词描述"
+                      placeholder="请填写技能关键词描述"
                       className="fresh-input flex-1 rounded-xl px-2.5 py-1.5"
                     />
                     <button
@@ -893,7 +922,7 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                 <button
                   type="button"
                   onClick={() =>
-                    updateContent('skills', [...(content.skills || []), { id: makeId('sk'), label: '工具/语言', items: '' }])
+                    updateContent('skills', [...(content.skills || []), { id: makeId('sk'), label: '', items: '' }])
                   }
                   className="inline-flex items-center gap-1 rounded-xl border border-dashed border-teal-300/90 px-3 py-1.5 font-medium text-teal-700 transition hover:bg-teal-50/70"
                 >
@@ -931,7 +960,7 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                             content.awards.map((i) => (i.id === aw.id ? { ...i, date: e.target.value } : i)),
                           )
                         }
-                        placeholder="时间"
+                        placeholder="如：2026.05"
                         className="fresh-input w-24 rounded-xl px-2.5 py-1.5"
                       />
                       <button
@@ -951,7 +980,7 @@ export const ResumeBuilderPage = memo(function ResumeBuilderPage({
                   <button
                     type="button"
                     onClick={() =>
-                      updateContent('awards', [...(content.awards || []), { id: makeId('aw'), title: '', date: '2026.05' }])
+                      updateContent('awards', [...(content.awards || []), { id: makeId('aw'), title: '', date: '' }])
                     }
                     className="inline-flex items-center gap-1 rounded-xl border border-dashed border-teal-300/90 px-3 py-1.5 font-medium text-teal-700 transition hover:bg-teal-50/70"
                   >
@@ -1102,6 +1131,7 @@ function ExperienceListEditor({
   primaryKey,
   secondaryLabel,
   secondaryKey,
+  placeholders = {},
   showCity = false,
   showLink = false,
   onChange,
@@ -1150,24 +1180,37 @@ function ExperienceListEditor({
           <div className="grid grid-cols-2 gap-2">
             <InputField
               label={primaryLabel}
+              placeholder={placeholders.primary || ''}
               value={item[primaryKey]}
               onChange={(v) => updateItem(item.id, { [primaryKey]: v })}
             />
             <InputField
               label={secondaryLabel}
+              placeholder={placeholders.secondary || ''}
               value={item[secondaryKey]}
               onChange={(v) => updateItem(item.id, { [secondaryKey]: v })}
             />
             <InputField
               label="起止时间"
+              placeholder={placeholders.period || '如：2025.06 - 2025.09'}
               value={item.period}
               onChange={(v) => updateItem(item.id, { period: v })}
             />
             {showCity && (
-              <InputField label="城市" value={item.city} onChange={(v) => updateItem(item.id, { city: v })} />
+              <InputField
+                label="城市"
+                placeholder={placeholders.city || '如：上海'}
+                value={item.city}
+                onChange={(v) => updateItem(item.id, { city: v })}
+              />
             )}
             {showLink && (
-              <InputField label="项目链接 (选填)" value={item.link} onChange={(v) => updateItem(item.id, { link: v })} />
+              <InputField
+                label="项目链接 (选填)"
+                placeholder={placeholders.link || '选填，如项目地址'}
+                value={item.link}
+                onChange={(v) => updateItem(item.id, { link: v })}
+              />
             )}
           </div>
 

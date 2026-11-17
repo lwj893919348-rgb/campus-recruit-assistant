@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { normalizeJobLocation } from '../../shared/jobParser.js';
+import { createStarterTemplateResumes, isLegacySamplePersona } from '../../shared/resumeDefaults.js';
 import {
   CATALOG_UPDATED_AT,
   DEFAULT_SYNC_SOURCES,
@@ -8,279 +9,6 @@ import {
 } from '../data/officialCatalog.js';
 
 const NOW_ISO = CATALOG_UPDATED_AT;
-
-const SAMPLE_RESUMES = [
-  {
-    id: 'resume-tech-sample',
-    title: '2027秋招-后端/全栈开发版（示例）',
-    template_id: 'tech-minimal',
-    theme_color: '#2563EB',
-    font_scale: 'standard',
-    margin_preset: 'standard',
-    section_order: ['education', 'internship', 'projects', 'skills', 'campus', 'awards', 'summary'],
-    hidden_sections: ['summary'],
-    is_default: 1,
-    content_json: {
-      basic: {
-        name: '林知行',
-        phone: '138-0000-2027',
-        email: 'linzhixing@example.edu.cn',
-        city: '期望城市：杭州 / 上海 / 深圳',
-        targetRole: 'Java / Go 后端开发工程师（2027届校招）',
-        github: 'github.com/linzhixing-dev',
-        politicalStatus: '共青团员',
-        hometown: '浙江杭州',
-        englishLevel: 'CET-6 (568)',
-        gradDate: '2027年6月',
-        avatar: '',
-      },
-      education: [
-        {
-          id: 'edu-1',
-          school: '华东理工大学（211 / 双一流）',
-          degree: '本科',
-          major: '计算机科学与技术',
-          period: '2023.09 - 2027.06',
-          gpa: 'GPA 3.78/4.0（专业前 8%）',
-          courses: '主修课程：数据结构与算法、操作系统、计算机网络、数据库系统原理、分布式系统设计',
-        },
-      ],
-      internship: [
-        {
-          id: 'int-1',
-          company: '某大型互联网企业 · 交易平台研发部',
-          role: '后端开发实习生',
-          period: '2026.06 - 2026.09',
-          city: '杭州',
-          bullets: [
-            '负责优惠券核销核心链路性能优化，通过引入 Redis 分片缓存与本地 Caffeine 二级缓存，将高峰期接口 P99 耗时从 142ms 降至 34ms（降幅 76%）。',
-            '参与大促防超卖与幂等网关改造，基于 RocketMQ 事务消息实现异步对账补偿，保障日均 300 万级核销请求零资损。',
-            '独立编写 18 个核心服务集成测试与压测脚本，发现并修复 2 处并发锁竞争隐患，获部门季度实习生优秀评价。',
-          ],
-        },
-      ],
-      projects: [
-        {
-          id: 'proj-1',
-          name: '分布式校园秒杀与统一限流网关（Go + Redis + Kafka）',
-          role: '核心开发 / 项目负责人',
-          period: '2026.01 - 2026.05',
-          link: 'github.com/linzhixing-dev/flash-gateway',
-          bullets: [
-            '针对校园抢课/抢票瞬时高并发场景，设计令牌桶 + 滑动窗口双层限流中间件，结合 Redis Lua 脚本完成原子化库存预扣减。',
-            '采用 Kafka 异步削峰解耦订单落库流程，引入死信队列与幂等 Token 校验，单机压测支撑 12,000+ QPS 稳定运行。',
-          ],
-        },
-        {
-          id: 'proj-2',
-          name: '基于 RAG 的高校就业政策与网申助手',
-          role: '全栈研发',
-          period: '2025.09 - 2025.12',
-          link: '',
-          bullets: [
-            '使用 React + FastAPI + PGVector 搭建知识库检索系统，整理 1,200+ 份校招宣讲公告并构建混合检索（BM25 + 向量召回）。',
-            '在校内测试期间服务 400+ 名应届生查询三方协议与落户政策，问答准确率提升至 91%。',
-          ],
-        },
-      ],
-      campus: [
-        {
-          id: 'camp-1',
-          org: '校 ACM 程序设计协会',
-          role: '技术培训部部长',
-          period: '2024.09 - 2025.09',
-          bullets: [
-            '组织 12 场算法周赛与校招刷题打卡营，累计编写 40+ 道动态规划/图论题解并辅导低年级同学参赛。',
-          ],
-        },
-      ],
-      skills: [
-        { id: 'sk-1', label: '编程语言', items: '熟练掌握 Java（JVM/并发）、Go，熟悉 Python、TypeScript / SQL' },
-        { id: 'sk-2', label: '后端与中间件', items: '熟悉 Spring Boot、Gin、MySQL（索引与事务隔离）、Redis、Kafka、Docker' },
-        { id: 'sk-3', label: '计算机基础', items: '扎实掌握 TCP/IP 网络协议、Linux 常用排查命令及常见设计模式' },
-      ],
-      awards: [
-        { id: 'aw-1', title: 'ICPC 国际大学生程序设计竞赛区域赛 银奖', date: '2025.11' },
-        { id: 'aw-2', title: '国家励志奖学金 / 校一等奖学金（连续两年）', date: '2024 - 2025' },
-        { id: 'aw-3', title: '大学英语六级（CET-6：568分），计算机三级网络技术', date: '2024.12' },
-      ],
-      summary: '具备扎实的计算机基础与大厂高并发后端实习经历，对系统性能调优与稳定性建设有强烈热情，代码风格规范，具备快速融入团队的能力。',
-    },
-  },
-  {
-    id: 'resume-soe-sample',
-    title: '2027秋招-国央企/金融管培通用版（示例）',
-    template_id: 'formal-soe',
-    theme_color: '#1E3A8A',
-    font_scale: 'standard',
-    margin_preset: 'standard',
-    section_order: ['education', 'internship', 'campus', 'projects', 'awards', 'skills', 'summary'],
-    hidden_sections: [],
-    is_default: 0,
-    content_json: {
-      basic: {
-        name: '沈清禾',
-        phone: '139-0000-2027',
-        email: 'shenqinghe@example.edu.cn',
-        city: '意向城市：北京 / 上海 / 深圳',
-        targetRole: '金融科技 / 综合管理培训生（2027届）',
-        github: '',
-        politicalStatus: '中共党员',
-        hometown: '江苏南京',
-        englishLevel: 'CET-6 (612) / IELTS 7.0',
-        gradDate: '2027年6月',
-        avatar: '',
-      },
-      education: [
-        {
-          id: 'edu-s1',
-          school: '中央财经大学（211 / 双一流）',
-          degree: '硕士研究生',
-          major: '金融科技（金融学与计算机复合方向）',
-          period: '2025.09 - 2027.06',
-          gpa: '加权均分 90.4 / 专业排名 3/48',
-          courses: '核心课程：商业银行经营管理、公司金融、Python 量化分析、数据库管理、金融风险度量',
-        },
-        {
-          id: 'edu-s2',
-          school: '南京大学（985 / 双一流）',
-          degree: '本科',
-          major: '经济学',
-          period: '2021.09 - 2025.06',
-          gpa: 'GPA 3.81/4.0（优秀毕业生）',
-          courses: '主修课程：微观/宏观经济学、计量经济学、会计学原理、国际金融',
-        },
-      ],
-      internship: [
-        {
-          id: 'int-s1',
-          company: '某国有大型商业银行总行 · 普惠金融部',
-          role: '风险模型与业务分析实习生',
-          period: '2026.06 - 2026.09',
-          city: '北京',
-          bullets: [
-            '协助搭建小微企业授信评分卡特征指标库，使用 SQL 与 Python 清洗 18 万条历史工商与流水数据，使模型 KS 值提升 4.2%。',
-            '独立撰写 6 份行业授信风险周报与《长三角制造业数字化转型调研报告》，获总行带教处室书面表扬。',
-          ],
-        },
-      ],
-      projects: [
-        {
-          id: 'proj-s1',
-          name: '国家自然科学基金子课题：数字人民币对商业银行流动性影响研究',
-          role: '核心研究助理',
-          period: '2025.10 - 2026.05',
-          link: '',
-          bullets: [
-            '负责 32 家上市银行 2018-2025 年财报数据梳理及面板回归建模，完成实证分析章节撰写并作为第二作者投稿核心期刊。',
-          ],
-        },
-      ],
-      campus: [
-        {
-          id: 'camp-s1',
-          org: '金融学院研究生党支部 & 校职业发展协会',
-          role: '党支部组织委员 / 就业协会副会长',
-          period: '2025.09 - 至今',
-          bullets: [
-            '统筹组织“走进总行/央企”名企参访与校招经验分享会 9 场，累计覆盖师生 1,500+ 人次，撰写宣传稿件浏览量破万。',
-          ],
-        },
-      ],
-      skills: [
-        { id: 'sk-s1', label: '数据分析', items: '熟练使用 SQL、Python（Pandas/Sklearn）、Stata、Excel 高级数据透视与 VBA' },
-        { id: 'sk-s2', label: '语言与资格', items: '英语六级 612 分、雅思 7.0（可作工作语言）；已通过证券从业、基金从业及初级会计职称' },
-      ],
-      awards: [
-        { id: 'aw-s1', title: '研究生国家奖学金（2026年） / 校级优秀共产党员', date: '2026.10' },
-        { id: 'aw-s2', title: '“挑战杯”全国大学生课外学术科技作品竞赛 省级一等奖', date: '2025.06' },
-      ],
-      summary: '中共党员，具备“经济金融 + 数据建模”复合学科背景与国有大行总行实习经历，公文写作规范严谨，责任心与抗压能力强。',
-    },
-  },
-  {
-    id: 'resume-social-sample',
-    title: '社招通用版 - 资深产品与业务架构简历',
-    template_id: 'compact-two-col',
-    theme_color: '#0F766E',
-    font_scale: 'compact',
-    margin_preset: 'narrow',
-    section_order: ['internship', 'projects', 'education', 'skills', 'awards', 'summary'],
-    hidden_sections: ['campus'],
-    is_default: 0,
-    content_json: {
-      basic: {
-        name: '林远航',
-        phone: '139-0000-5678',
-        email: 'yuanhang.lin@example.com',
-        city: '意向城市：上海 / 杭州',
-        targetRole: '高级产品经理 / B端解决方案架构师',
-        github: '',
-        portfolio: 'https://linkedin.com/in/example',
-        politicalStatus: '群众',
-        hometown: '浙江杭州',
-        englishLevel: 'CET-6 / 英语可作为工作语言',
-        gradDate: '社招 · 4年经验',
-        avatar: '',
-      },
-      education: [
-        {
-          id: 'edu-soc-1',
-          school: '同济大学',
-          degree: '本科',
-          major: '工业工程',
-          period: '2018.09 - 2022.06',
-          gpa: 'GPA 3.7/4.0',
-          courses: '核心课程：运筹学、系统工程、管理信息系统、人机交互设计',
-        },
-      ],
-      internship: [
-        {
-          id: 'work-soc-1',
-          company: '某头部SaaS软件科技公司 · 企业服务产品部',
-          role: '高级产品经理',
-          period: '2024.03 - 至今',
-          city: '上海',
-          bullets: [
-            '负责供应链与业财一体化 SaaS 核心工作台产品规划，主导审批流引擎与权限中心重构，客户续费率提升 9.4 个百分点。',
-            '联动售前与交付团队落地 14 家大型制造及零售集团标杆项目，单项目平均客单价由 45 万提升至 78 万。',
-          ],
-        },
-        {
-          id: 'work-soc-2',
-          company: '某一线互联网平台 · 商业化产品团队',
-          role: '产品经理',
-          period: '2022.07 - 2024.02',
-          city: '杭州',
-          bullets: [
-            '负责中小商家投放增长后台与线索归因链路设计，通过漏斗诊断工具将商家首月留存率提升 11%。',
-          ],
-        },
-      ],
-      projects: [
-        {
-          id: 'proj-soc-1',
-          name: 'AI 智能客服工单与知识库中台 0-1 建设',
-          role: '项目负责人',
-          period: '2025.04 - 2026.02',
-          link: '',
-          bullets: [
-            '设计基于企业私有知识库的 RAG 检索增强流程与人工接管降级策略，上线后高频标准问题自动解决率达 64%，客服人效提升 38%。',
-          ],
-        },
-      ],
-      campus: [],
-      skills: [
-        { id: 'sk-soc-1', label: '产品与商业化', items: '熟悉 B端业财/供应链建模、SQL 数据分析、Axure/Figma 原型设计、PRD 与招投标方案撰写' },
-        { id: 'sk-soc-2', label: '跨团队协同', items: '具备千万级营收产线跨部门PMO推进经验，持有 PMP 项目管理认证' },
-      ],
-      awards: [
-        { id: 'aw-soc-1', title: '2025 年度公司级最佳商业化产品创新奖', date: '2026.01' },
-      ],
-      summary: '4年B端SaaS与商业化产品实战经验，擅长从复杂企业业务流程中抽象标准化产品架构，兼顾商业化落地与研发交付效率。',
-    },
-  },
-];
 
 const DEMO_APPLICATIONS = [
   {
@@ -578,33 +306,77 @@ export function upsertBuiltInCatalog(db, options = {}) {
   return { companiesAdded, companiesUpdated, jobsAdded, jobsUpdated };
 }
 
+function insertStarterResumeRow(stmt, resume, timestamp) {
+  stmt.run(
+    resume.id,
+    resume.title,
+    resume.template_id,
+    resume.theme_color,
+    resume.font_scale,
+    resume.margin_preset,
+    JSON.stringify(resume.section_order),
+    JSON.stringify(resume.hidden_sections),
+    JSON.stringify(resume.content_json),
+    resume.is_default,
+    timestamp,
+    timestamp,
+  );
+}
+
 export function seedIfEmpty(db) {
   upsertBuiltInCatalog(db);
 
-  const resumeCount = db.prepare('SELECT COUNT(*) AS cnt FROM resumes').get().cnt;
-  if (resumeCount === 0) {
-    const insertResume = db.prepare(`
-      INSERT INTO resumes (
-        id, title, template_id, theme_color, font_scale, margin_preset,
-        section_order, hidden_sections, content_json, is_default, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+  const starterResumes = createStarterTemplateResumes();
+  const insertResume = db.prepare(`
+    INSERT INTO resumes (
+      id, title, template_id, theme_color, font_scale, margin_preset,
+      section_order, hidden_sections, content_json, is_default, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
 
-    for (const r of SAMPLE_RESUMES) {
-      insertResume.run(
-        r.id,
-        r.title,
-        r.template_id,
-        r.theme_color,
-        r.font_scale,
-        r.margin_preset,
-        JSON.stringify(r.section_order),
-        JSON.stringify(r.hidden_sections),
-        JSON.stringify(r.content_json),
-        r.is_default,
+  const existingResumes = db.prepare('SELECT * FROM resumes').all();
+  if (existingResumes.length === 0) {
+    for (const r of starterResumes) {
+      insertStarterResumeRow(insertResume, r, NOW_ISO);
+    }
+  } else {
+    const starterMap = new Map(starterResumes.map((r) => [r.id, r]));
+    const updateResume = db.prepare(`
+      UPDATE resumes SET
+        title = ?,
+        template_id = ?,
+        theme_color = ?,
+        font_scale = ?,
+        margin_preset = ?,
+        section_order = ?,
+        hidden_sections = ?,
+        content_json = ?,
+        updated_at = ?
+      WHERE id = ?
+    `);
+    let migratedLegacy = false;
+    for (const row of existingResumes) {
+      if (!isLegacySamplePersona(row)) continue;
+      const starter = starterMap.get(row.id);
+      if (!starter) continue;
+      migratedLegacy = true;
+      updateResume.run(
+        starter.title,
+        starter.template_id,
+        starter.theme_color,
+        starter.font_scale,
+        starter.margin_preset,
+        JSON.stringify(starter.section_order),
+        JSON.stringify(starter.hidden_sections),
+        JSON.stringify(starter.content_json),
         NOW_ISO,
-        NOW_ISO,
+        row.id,
       );
+    }
+    const hasCreative = existingResumes.some((row) => row.id === 'resume-creative-sample');
+    if (migratedLegacy && !hasCreative) {
+      const creative = starterMap.get('resume-creative-sample');
+      if (creative) insertStarterResumeRow(insertResume, creative, NOW_ISO);
     }
   }
 

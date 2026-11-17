@@ -5,7 +5,7 @@ import { PassThrough } from 'node:stream';
 import { DatabaseSync } from 'node:sqlite';
 import { createDatabase } from '../db/database.js';
 import { initSchema } from '../db/schema.js';
-import { upsertBuiltInCatalog } from '../db/seed.js';
+import { seedIfEmpty, upsertBuiltInCatalog } from '../db/seed.js';
 import { createApp } from '../app.js';
 import { OFFICIAL_COMPANIES, OFFICIAL_JOBS } from '../data/officialCatalog.js';
 import {
@@ -198,7 +198,25 @@ test('Resumes CRUD, duplicate, default switching, and last-resume protection', a
   try {
     const listRes = await invokeApp(app, 'GET', '/api/resumes');
     const { resumes } = listRes.data;
-    assert.equal(resumes.length, 3);
+    assert.equal(resumes.length, 4);
+    for (const r of resumes) {
+      assert.equal(r.content_json.basic.name, '');
+      assert.equal(r.content_json.basic.phone, '');
+      assert.equal(r.content_json.education.length, 0);
+      assert.equal(r.content_json.internship.length, 0);
+      assert.equal(r.content_json.projects.length, 0);
+      assert.equal(r.content_json.skills.length, 0);
+    }
+
+    const createBlankRes = await invokeApp(app, 'POST', '/api/resumes', {
+      title: '我的个人简历',
+      template_id: 'tech-minimal',
+    });
+    assert.equal(createBlankRes.status, 201);
+    assert.equal(createBlankRes.data.resume.content_json.basic.name, '');
+    assert.equal(createBlankRes.data.resume.content_json.education.length, 0);
+    assert.equal(createBlankRes.data.resume.content_json.projects.length, 0);
+    assert.equal(createBlankRes.data.resume.content_json.skills.length, 0);
 
     const dupRes = await invokeApp(app, 'POST', `/api/resumes/${resumes[0].id}/duplicate`, {
       title: '字节跳动专属简历',
@@ -215,11 +233,73 @@ test('Resumes CRUD, duplicate, default switching, and last-resume protection', a
     assert.equal(updRes.data.resume.template_id, 'modern-dual');
     assert.equal(updRes.data.resume.is_default, true);
 
+    await invokeApp(app, 'DELETE', `/api/resumes/${createBlankRes.data.resume.id}`);
     for (const r of resumes) {
       await invokeApp(app, 'DELETE', `/api/resumes/${r.id}`);
     }
     const blockDel = await invokeApp(app, 'DELETE', `/api/resumes/${cloned.id}`);
     assert.equal(blockDel.status, 400);
+  } finally {
+    db.close();
+  }
+});
+
+test('Legacy sample persona resumes upgrade to blank templates while user-edited resumes stay intact', async () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    initSchema(db);
+    db.prepare(`
+      INSERT INTO resumes (
+        id, title, template_id, theme_color, font_scale, margin_preset,
+        section_order, hidden_sections, content_json, is_default, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'resume-tech-sample',
+      '2027秋招-后端/全栈开发版（示例）',
+      'tech-minimal',
+      '#2563EB',
+      'standard',
+      'standard',
+      JSON.stringify(['education', 'internship']),
+      JSON.stringify([]),
+      JSON.stringify({ basic: { name: '林知行' }, education: [{ id: 'e1', school: '华东理工大学' }] }),
+      1,
+      '2026-01-01T00:00:00Z',
+      '2026-01-01T00:00:00Z',
+    );
+    db.prepare(`
+      INSERT INTO resumes (
+        id, title, template_id, theme_color, font_scale, margin_preset,
+        section_order, hidden_sections, content_json, is_default, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'resume-soe-sample',
+      '2027秋招-国央企/金融管培通用版（示例）',
+      'formal-soe',
+      '#1E3A8A',
+      'standard',
+      'standard',
+      JSON.stringify(['education']),
+      JSON.stringify([]),
+      JSON.stringify({ basic: { name: '真实用户姓名' }, education: [{ id: 'e2', school: '清华大学' }] }),
+      0,
+      '2026-01-01T00:00:00Z',
+      '2026-01-01T00:00:00Z',
+    );
+
+    seedIfEmpty(db);
+
+    const techRow = db.prepare('SELECT * FROM resumes WHERE id = ?').get('resume-tech-sample');
+    assert.equal(techRow.title, '基础模板 · 极简技术单栏');
+    const techContent = JSON.parse(techRow.content_json);
+    assert.equal(techContent.basic.name, '');
+    assert.equal(techContent.education.length, 0);
+
+    const soeRow = db.prepare('SELECT * FROM resumes WHERE id = ?').get('resume-soe-sample');
+    assert.equal(soeRow.title, '2027秋招-国央企/金融管培通用版（示例）');
+    const soeContent = JSON.parse(soeRow.content_json);
+    assert.equal(soeContent.basic.name, '真实用户姓名');
+    assert.equal(soeContent.education[0].school, '清华大学');
   } finally {
     db.close();
   }
@@ -247,7 +327,7 @@ test('Applications lifecycle, resume linking, demo clearing, and CSV export', as
     });
     assert.equal(createRes.status, 201);
     const createdApp = createRes.data.application;
-    assert.equal(createdApp.resume_title, '2027秋招-后端/全栈开发版（示例）');
+    assert.equal(createdApp.resume_title, '基础模板 · 极简技术单栏');
 
     const patchRes = await invokeApp(app, 'PATCH', `/api/applications/${createdApp.id}/status`, {
       status: 'interview',

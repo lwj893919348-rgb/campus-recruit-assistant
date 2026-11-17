@@ -14,6 +14,18 @@ const MARGIN_STYLES = {
   relaxed: '46px 50px',
 };
 
+const EMPTY_SECTION_HINTS = {
+  education: '空白模板占位 · 在左侧「教育背景」添加院校、学历、专业与起止时间',
+  internship: '空白模板占位 · 在左侧「工作与实习经历」添加公司、岗位与量化成果',
+  projects: '空白模板占位 · 在左侧「项目经历」添加核心项目与 STAR 产出描述',
+  skills: '空白模板占位 · 在左侧「专业技能」填写技术栈、语言证书或工具能力',
+  campus: '空白模板占位 · 在左侧「校园与科研经历」添加科研课题或学生工作经历',
+  awards: '空白模板占位 · 在左侧「荣誉与证书」添加奖学金、竞赛获奖或资格证书',
+  summary: '空白模板占位 · 在左侧「荣誉证书与个人总结」补充个人亮点概述',
+};
+
+const hasAnyValue = (obj, keys) => keys.some((key) => Boolean(String(obj?.[key] || '').trim()));
+
 function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
   const headingStyle = { color: themeColor };
 
@@ -59,9 +71,25 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
     );
   };
 
+  const renderEmptySection = (key) => {
+    const hint = EMPTY_SECTION_HINTS[key];
+    if (!hint) return null;
+    return (
+      <section className="no-print">
+        {renderSectionTitle(RESUME_SECTION_LABELS[key])}
+        <div
+          className="rounded border border-dashed border-slate-200/90 bg-slate-50/45 px-3 py-2 text-slate-400"
+          style={{ fontSize: `${Math.max(basePx - 1, 10)}px` }}
+        >
+          {hint}
+        </div>
+      </section>
+    );
+  };
+
   if (sectionKey === 'education') {
     const items = content.education || [];
-    if (items.length === 0) return null;
+    if (items.length === 0) return renderEmptySection('education');
     return (
       <section>
         {renderSectionTitle(RESUME_SECTION_LABELS.education)}
@@ -70,7 +98,7 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
             <div key={edu.id}>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div className="font-semibold text-slate-900">
-                  {edu.school}
+                  {edu.school || <span className="no-print font-normal text-slate-300">学校名称</span>}
                   {edu.degree ? <span className="ml-2 font-normal text-slate-700">· {edu.degree}</span> : null}
                   {edu.major ? <span className="ml-1.5 font-medium text-slate-800">{edu.major}</span> : null}
                 </div>
@@ -93,7 +121,7 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
 
   if (sectionKey === 'internship') {
     const items = content.internship || [];
-    if (items.length === 0) return null;
+    if (items.length === 0) return renderEmptySection('internship');
     return (
       <section>
         {renderSectionTitle(RESUME_SECTION_LABELS.internship)}
@@ -109,7 +137,7 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
             >
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div className="font-semibold text-slate-900">
-                  {item.company}
+                  {item.company || <span className="no-print font-normal text-slate-300">公司及部门</span>}
                   {item.role ? <span className="ml-2 font-medium text-slate-700">| {item.role}</span> : null}
                   {item.city ? <span className="ml-2 font-normal text-slate-500">({item.city})</span> : null}
                 </div>
@@ -117,7 +145,7 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
                   {item.period}
                 </span>
               </div>
-              {item.bullets?.length > 0 && (
+              {item.bullets?.filter(Boolean).length > 0 && (
                 <ul className="mt-1 list-disc space-y-0.5 pl-4 text-slate-700">
                   {item.bullets.filter(Boolean).map((b, idx) => (
                     <li key={idx}>{b}</li>
@@ -133,7 +161,7 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
 
   if (sectionKey === 'projects') {
     const items = content.projects || [];
-    if (items.length === 0) return null;
+    if (items.length === 0) return renderEmptySection('projects');
     return (
       <section>
         {renderSectionTitle(RESUME_SECTION_LABELS.projects)}
@@ -142,7 +170,7 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
             <div key={proj.id}>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div className="font-semibold text-slate-900">
-                  {proj.name}
+                  {proj.name || <span className="no-print font-normal text-slate-300">项目名称</span>}
                   {proj.role ? <span className="ml-2 font-medium text-slate-700">· {proj.role}</span> : null}
                   {proj.link ? (
                     <span className="ml-2 font-normal text-slate-500" style={{ fontSize: `${basePx - 1}px` }}>
@@ -154,7 +182,7 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
                   {proj.period}
                 </span>
               </div>
-              {proj.bullets?.length > 0 && (
+              {proj.bullets?.filter(Boolean).length > 0 && (
                 <ul className="mt-1 list-disc space-y-0.5 pl-4 text-slate-700">
                   {proj.bullets.filter(Boolean).map((b, idx) => (
                     <li key={idx}>{b}</li>
@@ -170,7 +198,7 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
 
   if (sectionKey === 'campus') {
     const items = content.campus || [];
-    if (items.length === 0) return null;
+    if (items.length === 0) return renderEmptySection('campus');
     return (
       <section>
         {renderSectionTitle(RESUME_SECTION_LABELS.campus)}
@@ -179,14 +207,14 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
             <div key={item.id}>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div className="font-semibold text-slate-900">
-                  {item.org}
+                  {item.org || <span className="no-print font-normal text-slate-300">组织 / 实验室</span>}
                   {item.role ? <span className="ml-2 font-medium text-slate-700">· {item.role}</span> : null}
                 </div>
                 <span className="tabular-nums text-slate-500" style={{ fontSize: `${basePx - 0.5}px` }}>
                   {item.period}
                 </span>
               </div>
-              {item.bullets?.length > 0 && (
+              {item.bullets?.filter(Boolean).length > 0 && (
                 <ul className="mt-1 list-disc space-y-0.5 pl-4 text-slate-700">
                   {item.bullets.filter(Boolean).map((b, idx) => (
                     <li key={idx}>{b}</li>
@@ -202,7 +230,7 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
 
   if (sectionKey === 'skills') {
     const items = content.skills || [];
-    if (items.length === 0) return null;
+    if (items.length === 0) return renderEmptySection('skills');
     return (
       <section>
         {renderSectionTitle(RESUME_SECTION_LABELS.skills)}
@@ -214,9 +242,11 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
                   className="rounded px-2 py-0.5 font-semibold text-white"
                   style={{ backgroundColor: themeColor, fontSize: `${basePx - 1}px` }}
                 >
-                  {sk.label}
+                  {sk.label || '技能'}
                 </span>
-                <span className="flex-1 text-slate-700">{sk.items}</span>
+                <span className="flex-1 text-slate-700">
+                  {sk.items || <span className="no-print text-slate-300">请填写技能关键词</span>}
+                </span>
               </div>
             ))}
           </div>
@@ -224,8 +254,8 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
           <div className="space-y-1">
             {items.map((sk) => (
               <div key={sk.id} className="text-slate-700">
-                <span className="font-semibold text-slate-900">{sk.label}：</span>
-                <span>{sk.items}</span>
+                <span className="font-semibold text-slate-900">{sk.label || '技能'}：</span>
+                <span>{sk.items || <span className="no-print text-slate-300">请填写技能关键词</span>}</span>
               </div>
             ))}
           </div>
@@ -236,14 +266,14 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
 
   if (sectionKey === 'awards') {
     const items = content.awards || [];
-    if (items.length === 0) return null;
+    if (items.length === 0) return renderEmptySection('awards');
     return (
       <section>
         {renderSectionTitle(RESUME_SECTION_LABELS.awards)}
         <div className="space-y-1">
           {items.map((aw) => (
             <div key={aw.id} className="flex items-baseline justify-between gap-2 text-slate-700">
-              <span>• {aw.title}</span>
+              <span>• {aw.title || <span className="no-print text-slate-300">奖项或证书名称</span>}</span>
               <span className="shrink-0 tabular-nums text-slate-500" style={{ fontSize: `${basePx - 0.5}px` }}>
                 {aw.date}
               </span>
@@ -255,7 +285,7 @@ function SectionBlock({ sectionKey, content, templateId, themeColor, basePx }) {
   }
 
   if (sectionKey === 'summary') {
-    if (!content.summary?.trim()) return null;
+    if (!content.summary?.trim()) return renderEmptySection('summary');
     return (
       <section>
         {renderSectionTitle(RESUME_SECTION_LABELS.summary)}
@@ -309,40 +339,63 @@ export function ResumeSheet({ resume, sheetRef }) {
               />
             ) : null}
             <h1 className="font-bold tracking-tight text-slate-900" style={{ fontSize: `${scale.basePx + 10}px` }}>
-              {basic.name || '姓名'}
+              {basic.name || <span className="no-print text-slate-300">你的姓名</span>}
             </h1>
-            {basic.targetRole && (
+            {basic.targetRole ? (
               <div className="mt-1 font-semibold" style={{ color: themeColor, fontSize: `${scale.basePx + 0.5}px` }}>
                 {basic.targetRole}
               </div>
+            ) : (
+              <div className="no-print mt-1 font-medium text-slate-400" style={{ fontSize: `${scale.basePx + 0.5}px` }}>
+                求职意向 / 目标岗位
+              </div>
             )}
             <div className="mt-3 space-y-1.5 text-slate-600" style={{ fontSize: `${scale.basePx - 0.5}px` }}>
-              {basic.phone && (
-                <div className="flex items-center gap-1.5">
-                  <Phone className="h-3 w-3 shrink-0" style={{ color: themeColor }} />
-                  <span className="tabular-nums">{basic.phone}</span>
+              {hasAnyValue(basic, ['phone', 'email', 'city', 'github', 'englishLevel', 'gradDate']) ? (
+                <>
+                  {basic.phone && (
+                    <div className="flex items-center gap-1.5">
+                      <Phone className="h-3 w-3 shrink-0" style={{ color: themeColor }} />
+                      <span className="tabular-nums">{basic.phone}</span>
+                    </div>
+                  )}
+                  {basic.email && (
+                    <div className="flex items-center gap-1.5 break-all">
+                      <Mail className="h-3 w-3 shrink-0" style={{ color: themeColor }} />
+                      <span>{basic.email}</span>
+                    </div>
+                  )}
+                  {basic.city && (
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="h-3 w-3 shrink-0" style={{ color: themeColor }} />
+                      <span>{basic.city}</span>
+                    </div>
+                  )}
+                  {basic.github && (
+                    <div className="flex items-center gap-1.5 break-all">
+                      <Globe className="h-3 w-3 shrink-0" style={{ color: themeColor }} />
+                      <span>{basic.github}</span>
+                    </div>
+                  )}
+                  {basic.englishLevel && <div>语言：{basic.englishLevel}</div>}
+                  {basic.gradDate && <div>毕业：{basic.gradDate}</div>}
+                </>
+              ) : (
+                <div className="no-print space-y-1.5 text-slate-400">
+                  <div className="flex items-center gap-1.5">
+                    <Phone className="h-3 w-3 shrink-0 opacity-60" style={{ color: themeColor }} />
+                    <span>联系电话：待填写</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Mail className="h-3 w-3 shrink-0 opacity-60" style={{ color: themeColor }} />
+                    <span>电子邮箱：待填写</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <MapPin className="h-3 w-3 shrink-0 opacity-60" style={{ color: themeColor }} />
+                    <span>意向城市：待填写</span>
+                  </div>
                 </div>
               )}
-              {basic.email && (
-                <div className="flex items-center gap-1.5 break-all">
-                  <Mail className="h-3 w-3 shrink-0" style={{ color: themeColor }} />
-                  <span>{basic.email}</span>
-                </div>
-              )}
-              {basic.city && (
-                <div className="flex items-center gap-1.5">
-                  <MapPin className="h-3 w-3 shrink-0" style={{ color: themeColor }} />
-                  <span>{basic.city}</span>
-                </div>
-              )}
-              {basic.github && (
-                <div className="flex items-center gap-1.5 break-all">
-                  <Globe className="h-3 w-3 shrink-0" style={{ color: themeColor }} />
-                  <span>{basic.github}</span>
-                </div>
-              )}
-              {basic.englishLevel && <div>语言：{basic.englishLevel}</div>}
-              {basic.gradDate && <div>毕业：{basic.gradDate}</div>}
             </div>
           </div>
 
@@ -394,20 +447,32 @@ export function ResumeSheet({ resume, sheetRef }) {
             <div>
               <div className="flex items-baseline gap-3">
                 <h1 className="font-bold tracking-tight" style={{ fontSize: `${scale.basePx + 12}px` }}>
-                  {basic.name || '姓名'}
+                  {basic.name || <span className="no-print text-white/60">你的姓名</span>}
                 </h1>
-                {basic.targetRole && (
+                {basic.targetRole ? (
                   <span className="rounded-full bg-white/15 px-3 py-0.5 font-medium text-white">
                     {basic.targetRole}
+                  </span>
+                ) : (
+                  <span className="no-print rounded-full bg-white/10 px-3 py-0.5 font-medium text-white/65">
+                    求职意向标签
                   </span>
                 )}
               </div>
               <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-white/90" style={{ fontSize: `${scale.basePx - 0.5}px` }}>
-                {basic.phone && <span>电话：{basic.phone}</span>}
-                {basic.email && <span>邮箱：{basic.email}</span>}
-                {basic.city && <span>{basic.city}</span>}
-                {basic.gradDate && <span>毕业时间：{basic.gradDate}</span>}
-                {basic.github && <span>主页：{basic.github}</span>}
+                {hasAnyValue(basic, ['phone', 'email', 'city', 'gradDate', 'github']) ? (
+                  <>
+                    {basic.phone && <span>电话：{basic.phone}</span>}
+                    {basic.email && <span>邮箱：{basic.email}</span>}
+                    {basic.city && <span>{basic.city}</span>}
+                    {basic.gradDate && <span>毕业时间：{basic.gradDate}</span>}
+                    {basic.github && <span>主页：{basic.github}</span>}
+                  </>
+                ) : (
+                  <span className="no-print text-white/60">
+                    电话：待填写 · 邮箱：待填写 · 意向城市：待填写 · 毕业时间：待填写
+                  </span>
+                )}
               </div>
             </div>
             {basic.avatar ? (
@@ -450,12 +515,14 @@ export function ResumeSheet({ resume, sheetRef }) {
             <div className="flex-1">
               <div className="flex items-baseline gap-3">
                 <h1 className="font-bold tracking-wider text-slate-900" style={{ fontSize: `${scale.basePx + 11}px` }}>
-                  {basic.name || '姓名'}
+                  {basic.name || <span className="no-print text-slate-300">你的姓名</span>}
                 </h1>
-                {basic.targetRole && (
+                {basic.targetRole ? (
                   <span className="font-semibold" style={{ color: themeColor }}>
                     求职意向：{basic.targetRole}
                   </span>
+                ) : (
+                  <span className="no-print font-medium text-slate-400">求职意向：待填写</span>
                 )}
               </div>
 
@@ -463,13 +530,26 @@ export function ResumeSheet({ resume, sheetRef }) {
                 className="mt-2.5 grid grid-cols-2 gap-x-6 gap-y-1 rounded border border-slate-200 bg-slate-50/70 px-3 py-2 text-slate-700"
                 style={{ fontSize: `${scale.basePx - 0.5}px` }}
               >
-                {basic.phone && <div>联系电话：<span className="tabular-nums">{basic.phone}</span></div>}
-                {basic.email && <div className="truncate">电子邮箱：{basic.email}</div>}
-                {basic.politicalStatus && <div>政治面貌：{basic.politicalStatus}</div>}
-                {basic.hometown && <div>籍贯生源：{basic.hometown}</div>}
-                {basic.englishLevel && <div>外语能力：{basic.englishLevel}</div>}
-                {basic.gradDate && <div>毕业时间：{basic.gradDate}</div>}
-                {basic.city && <div className="col-span-2">{basic.city}</div>}
+                {hasAnyValue(basic, ['phone', 'email', 'politicalStatus', 'hometown', 'englishLevel', 'gradDate', 'city']) ? (
+                  <>
+                    {basic.phone && <div>联系电话：<span className="tabular-nums">{basic.phone}</span></div>}
+                    {basic.email && <div className="truncate">电子邮箱：{basic.email}</div>}
+                    {basic.politicalStatus && <div>政治面貌：{basic.politicalStatus}</div>}
+                    {basic.hometown && <div>籍贯生源：{basic.hometown}</div>}
+                    {basic.englishLevel && <div>外语能力：{basic.englishLevel}</div>}
+                    {basic.gradDate && <div>毕业时间：{basic.gradDate}</div>}
+                    {basic.city && <div className="col-span-2">{basic.city}</div>}
+                  </>
+                ) : (
+                  <div className="no-print col-span-2 grid grid-cols-2 gap-x-6 gap-y-1 text-slate-400">
+                    <div>联系电话：待填写</div>
+                    <div>电子邮箱：待填写</div>
+                    <div>政治面貌：待填写</div>
+                    <div>籍贯生源：待填写</div>
+                    <div>外语能力：待填写</div>
+                    <div>毕业时间：待填写</div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -480,7 +560,7 @@ export function ResumeSheet({ resume, sheetRef }) {
                 className="h-28 w-22 shrink-0 rounded border border-slate-300 object-cover"
               />
             ) : (
-              <div className="flex h-28 w-22 shrink-0 items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50 text-center text-[10px] text-slate-400">
+              <div className="no-print flex h-28 w-22 shrink-0 items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50 text-center text-[10px] text-slate-400">
                 一寸证件照
                 <br />
                 (可选上传)
@@ -506,6 +586,14 @@ export function ResumeSheet({ resume, sheetRef }) {
   }
 
   // Default: Classic Tech Minimal (ATS Friendly Single Column)
+  const techMetaItems = [
+    basic.phone,
+    basic.email,
+    basic.city,
+    basic.gradDate ? `毕业：${basic.gradDate}` : '',
+    basic.github,
+  ].filter(Boolean);
+
   return (
     <div
       id="resume-print-sheet"
@@ -516,22 +604,33 @@ export function ResumeSheet({ resume, sheetRef }) {
       <header className="mb-3 flex items-center justify-between gap-4 border-b border-slate-200 pb-3">
         <div className="flex-1 text-center">
           <h1 className="font-bold tracking-wide text-slate-900" style={{ fontSize: `${scale.basePx + 11}px` }}>
-            {basic.name || '姓名'}
+            {basic.name || <span className="no-print text-slate-300">你的姓名</span>}
           </h1>
-          {basic.targetRole && (
+          {basic.targetRole ? (
             <div className="mt-0.5 font-medium" style={{ color: themeColor, fontSize: `${scale.basePx + 0.5}px` }}>
               {basic.targetRole}
             </div>
+          ) : (
+            <div className="no-print mt-0.5 font-medium text-slate-400" style={{ fontSize: `${scale.basePx + 0.5}px` }}>
+              求职意向 / 目标岗位
+            </div>
           )}
           <div
-            className="mt-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-slate-600"
+            className="mt-1.5 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-0.5 text-slate-600"
             style={{ fontSize: `${scale.basePx - 0.5}px` }}
           >
-            {basic.phone && <span className="tabular-nums">{basic.phone}</span>}
-            {basic.email && <span>| {basic.email}</span>}
-            {basic.city && <span>| {basic.city}</span>}
-            {basic.gradDate && <span>| 毕业：{basic.gradDate}</span>}
-            {basic.github && <span>| {basic.github}</span>}
+            {techMetaItems.length > 0 ? (
+              techMetaItems.map((meta, idx) => (
+                <React.Fragment key={idx}>
+                  {idx > 0 && <span className="text-slate-300">|</span>}
+                  <span className={idx === 0 && basic.phone === meta ? 'tabular-nums' : undefined}>{meta}</span>
+                </React.Fragment>
+              ))
+            ) : (
+              <span className="no-print text-slate-400">
+                联系电话 · 电子邮箱 · 意向城市 · 毕业时间 · GitHub / 作品集
+              </span>
+            )}
           </div>
         </div>
         {basic.avatar ? (

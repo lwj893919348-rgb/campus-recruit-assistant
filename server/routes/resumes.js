@@ -1,55 +1,6 @@
 import express from 'express';
 import crypto from 'node:crypto';
-
-const DEFAULT_SECTION_ORDER = ['education', 'internship', 'projects', 'skills', 'campus', 'awards', 'summary'];
-
-function createEmptyContent() {
-  return {
-    basic: {
-      name: '张同学',
-      phone: '138-0000-0000',
-      email: 'student@university.edu.cn',
-      city: '期望城市：北京 / 上海 / 杭州',
-      targetRole: '校招应届生岗位',
-      github: '',
-      politicalStatus: '共青团员',
-      hometown: '',
-      englishLevel: 'CET-6',
-      gradDate: '2027年6月',
-      avatar: '',
-    },
-    education: [
-      {
-        id: 'edu-new-1',
-        school: 'XX大学',
-        degree: '本科',
-        major: '计算机科学与技术',
-        period: '2023.09 - 2027.06',
-        gpa: 'GPA 3.6/4.0',
-        courses: '数据结构、操作系统、计算机网络、数据库原理',
-      },
-    ],
-    internship: [],
-    projects: [
-      {
-        id: 'proj-new-1',
-        name: '校内课程实践 / 核心项目名称',
-        role: '核心开发者',
-        period: '2026.03 - 2026.06',
-        link: '',
-        bullets: [
-          '使用 STAR 法则描述：针对【具体痛点/背景】，采取了【核心技术与方案】，最终实现【量化指标提升，如性能提升 40%】。',
-        ],
-      },
-    ],
-    campus: [],
-    skills: [
-      { id: 'sk-new-1', label: '核心技能', items: '请填写与目标校招岗位匹配的技能关键词（利于企业 ATS 筛选）' },
-    ],
-    awards: [],
-    summary: '',
-  };
-}
+import { DEFAULT_SECTION_ORDER, createBlankResumeContent } from '../../shared/resumeDefaults.js';
 
 function formatResumeRow(row) {
   if (!row) return null;
@@ -85,7 +36,7 @@ export function createResumesRouter(db) {
       margin_preset = 'standard',
       section_order = DEFAULT_SECTION_ORDER,
       hidden_sections = [],
-      content_json = createEmptyContent(),
+      content_json = createBlankResumeContent(),
       is_default = false,
     } = req.body || {};
 
